@@ -25,9 +25,19 @@ Quartz does **not** bundle a rendering engine or ship a UI library. Instead, it 
 
 | Platform | Backend               |
 | -------- | --------------------- |
-| 🍎 macOS  | **AppKit** (Cocoa)    |
-| 🐧 Linux  | **GTK 3** or **Qt 5/6** |
-| 🪟 Windows | **Win32 API**         |
+| ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white&style=flat) | **AppKit** (Cocoa)    |
+| ![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black&style=flat) | **GTK 3** or **Qt 5/6** |
+| ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white&style=flat) | **Win32 API**         |
+
+### 🧪 Tested On
+
+Quartz has been verified to work on the following environments:
+
+| OS | Backend | Status |
+| -- | ------- | ------ |
+| ![macOS 26](https://img.shields.io/badge/macOS_26-000000?logo=apple&logoColor=white&style=flat) | AppKit | ✅ Working |
+| ![CachyOS](https://img.shields.io/badge/CachyOS-00A6D6?logo=archlinux&logoColor=white&style=flat) | GTK 3 | ✅ Working |
+| ![CachyOS](https://img.shields.io/badge/CachyOS-00A6D6?logo=archlinux&logoColor=white&style=flat) | Qt 6 | ✅ Working |
 
 ---
 
