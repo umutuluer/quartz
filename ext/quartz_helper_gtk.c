@@ -13,10 +13,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+// ── Widget metadata ────────────────────────────────────────────────────
+
+typedef struct {
+    int32_t x;
+    int32_t y;
+} WidgetPos;
+
 // ── Widget registry ────────────────────────────────────────────────────
 
 // We store GtkWidget* pointers keyed by widget_id.
 static GHashTable *widget_map = NULL;
+
+// ── Position registry (x, y per widget) ────────────────────────────────
+
+static GHashTable *position_map = NULL;
 
 // ── Callback registry ──────────────────────────────────────────────────
 
@@ -35,6 +46,8 @@ static int32_t next_widget_id(void) {
 static void ensure_init(void) {
     if (!widget_map) {
         widget_map   = g_hash_table_new(g_direct_hash, g_direct_equal);
+        position_map = g_hash_table_new_full(g_direct_hash, g_direct_equal,
+                                             NULL, free);
         callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     }
 }
@@ -118,8 +131,13 @@ int32_t quartz_button_create(const char *title, int32_t x, int32_t y,
     GtkWidget *button = gtk_button_new_with_label(title);
     gtk_widget_set_size_request(button, width, height);
 
-    // Store required size so GtkFixed can honour it
     g_hash_table_insert(widget_map, GINT_TO_POINTER(wid), button);
+
+    // Store position so quartz_widget_set_parent can use it
+    WidgetPos *pos = malloc(sizeof(WidgetPos));
+    pos->x = x;
+    pos->y = y;
+    g_hash_table_insert(position_map, GINT_TO_POINTER(wid), pos);
 
     return wid;
 }
@@ -136,6 +154,12 @@ int32_t quartz_label_create(const char *text, int32_t x, int32_t y,
     gtk_widget_set_size_request(label, width, height);
 
     g_hash_table_insert(widget_map, GINT_TO_POINTER(wid), label);
+
+    // Store position
+    WidgetPos *pos = malloc(sizeof(WidgetPos));
+    pos->x = x;
+    pos->y = y;
+    g_hash_table_insert(position_map, GINT_TO_POINTER(wid), pos);
 
     return wid;
 }
@@ -163,9 +187,11 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
     }
 
     if (container && GTK_IS_FIXED(container)) {
-        // Get the stored size-request; GtkFixed needs explicit position
-        // (size is already set via gtk_widget_set_size_request above)
-        gtk_fixed_put(GTK_FIXED(container), child, 0, 0);
+        WidgetPos *pos = (WidgetPos *)g_hash_table_lookup(position_map,
+                                                           GINT_TO_POINTER(child_id));
+        gint cx = pos ? pos->x : 0;
+        gint cy = pos ? pos->y : 0;
+        gtk_fixed_put(GTK_FIXED(container), child, cx, cy);
         gtk_widget_show(child);
     }
 }
