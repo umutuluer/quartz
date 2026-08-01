@@ -1,0 +1,18 @@
+/docs/
+/lib/
+/bin/
+/.shards/
+*.dwarf
+
+# Compiled native helper (platform-specific build artifact)
+/ext/quartz_helper.o
+
+# macOS debug symbols
+*.dSYM/
+
+# Editor / IDE
+.vscode/
+
+# Libraries don't need dependency lock
+# Dependencies will be locked in applications that use them
+/shard.lock

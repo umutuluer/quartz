@@ -1,0 +1,211 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Quartz logo" width="128" />
+</p>
+
+<h1 align="center">Quartz</h1>
+
+<p align="center">
+  <strong>A Windows Forms-inspired, cross-platform GUI toolkit for Crystal</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/umutuluer/quartz/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen" alt="CI" /></a>
+  <a href="https://github.com/umutuluer/quartz/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License" /></a>
+  <a href="https://crystal-lang.org"><img src="https://img.shields.io/badge/crystal-%3E%3D%201.21.0-black" alt="Crystal" /></a>
+  <a href="#platform-support"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platforms" /></a>
+</p>
+
+---
+
+## ✨ Overview
+
+**Quartz** is a **native, cross-platform GUI toolkit** for the [Crystal](https://crystal-lang.org) programming language. Its API is inspired by **Windows Forms**, making it instantly familiar to developers who have worked with desktop GUI frameworks before.
+
+Quartz does **not** bundle a rendering engine or ship a UI library. Instead, it wraps each platform's **native toolkit** through a thin C bridge, giving you truly native look-and-feel on every OS — for free.
+
+| Platform | Backend               |
+| -------- | --------------------- |
+| 🍎 macOS  | **AppKit** (Cocoa)    |
+| 🐧 Linux  | **GTK 3** or **Qt 5/6** |
+| 🪟 Windows | **Win32 API**         |
+
+---
+
+## 🚀 Quick Start
+
+```crystal
+require "quartz"
+
+Quartz::Application.run do |app|
+  window = Quartz::Window.new("Hello, Quartz!", 400, 250)
+
+  label = Quartz::Label.new("Welcome! 👋", x: 20, y: 20, width: 360, height: 30)
+  window.add_control(label)
+
+  button = Quartz::Button.new("Click Me", x: 20, y: 60, width: 120, height: 32)
+  button.on_click { label.text = "Button clicked! 🎉" }
+  window.add_control(button)
+
+  window.show
+end
+```
+
+---
+
+## 📦 Installation
+
+1. Add the dependency to your `shard.yml`:
+
+   ```yaml
+   dependencies:
+     quartz:
+       github: umutuluer/quartz
+   ```
+
+2. Install with [Shards](https://crystal-lang.org/reference/guides/shards.html):
+
+   ```bash
+   shards install
+   ```
+
+---
+
+## 🔨 Building from Source
+
+Quartz links against a compiled `ext/quartz_helper.o` object file. Use the provided `Makefile` to build it:
+
+```bash
+make          # auto-detects your platform (macOS / Linux / Windows)
+make mac      # force macOS AppKit backend
+make gtk      # force Linux GTK 3 backend
+make qt       # force Linux Qt 5/6 backend (QT_VERSION=6 for Qt6)
+make win      # force Windows Win32 backend
+make clean    # remove build artifacts
+```
+
+Then compile your Crystal application as usual:
+
+```bash
+shards build
+```
+
+---
+
+## 📖 API Reference
+
+### Application Lifecycle
+
+| Method                          | Description                    |
+| ------------------------------- | ------------------------------ |
+| `Quartz::Application.run { }` | Starts the application loop    |
+| `Quartz::Application.exit`    | Terminates the application     |
+
+### Window
+
+| Method                                      | Description              |
+| ------------------------------------------- | ------------------------ |
+| `Window.new(title, width, height)`         | Creates a new window     |
+| `window.title = "New Title"`               | Changes the window title |
+| `window.show`                              | Shows the window         |
+| `window.add_control(control)`              | Adds a child control     |
+
+### Button
+
+| Method                                          | Description                     |
+| ----------------------------------------------- | ------------------------------- |
+| `Button.new(text, x, y, width, height)`        | Creates a push button           |
+| `button.text = "Save"`                         | Updates the button label        |
+| `button.on_click { }`                          | Registers a click callback      |
+
+### Label
+
+| Method                                          | Description              |
+| ----------------------------------------------- | ----------------------- |
+| `Label.new(text, x, y, width, height)`         | Creates a read-only label |
+| `label.text`                                   | Gets the current text     |
+| `label.text = "Updated"`                       | Updates the label text    |
+
+> All controls inherit from `Control`, which provides the low-level `handle` and `parent` properties.
+
+---
+
+## 🧪 Examples
+
+Run the included hello-world example:
+
+```bash
+make examples
+./bin/hello_world
+```
+
+Example source: [`examples/hello_world.cr`](examples/hello_world.cr)
+
+---
+
+## 🏗️ Architecture
+
+```
+┌──────────────────────────────────────────┐
+│            Crystal (src/)                 │
+│  Application · Window · Button · Label    │
+│                  │                        │
+│            lib_quartz.cr                  │
+│          (C bindings via @[Link])         │
+└──────────────────┬───────────────────────┘
+                   │  quartz_helper.h
+┌──────────────────┴───────────────────────┐
+│          C bridge (ext/)                  │
+│  quartz_helper_mac.m  ──  AppKit         │
+│  quartz_helper_gtk.c  ──  GTK 3          │
+│  quartz_helper_qt.cpp ──  Qt 5/6         │
+│  quartz_helper_win.c  ──  Win32 API      │
+└──────────────────────────────────────────┘
+```
+
+---
+
+## 🗺️ Roadmap
+
+- [x] macOS AppKit backend
+- [x] Linux GTK 3 backend
+- [x] Linux Qt 5/6 backend
+- [x] Windows Win32 backend
+- [ ] TextBox / input controls
+- [ ] CheckBox, RadioButton
+- [ ] Layout managers (Flow, Grid, Stack)
+- [ ] ComboBox / DropDown
+- [ ] File dialogs
+- [ ] Menu bar & context menus
+- [ ] Comprehensive test suite
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Open a Pull Request
+
+Please make sure your code follows the existing style and includes appropriate specs.
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 👤 Author
+
+**Umut ULUER** — [@umutuluer](https://github.com/umutuluer)
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ and Crystal</sub>
+</p>

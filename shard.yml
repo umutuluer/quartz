@@ -1,0 +1,9 @@
+name: quartz
+version: 0.1.0
+
+authors:
+  - Umut ULUER <uluerumut@gmail.com>
+
+crystal: '>= 1.21.0'
+
+license: MIT
