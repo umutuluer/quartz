@@ -69,11 +69,31 @@ CC     = $(CC_$(BACKEND))
 CFLAGS = $(CFLAGS_$(BACKEND))
 LDFLAGS = $(LDFLAGS_$(BACKEND))
 
+# Crystal compile-time flags mirroring the selected backend.
+# These are required by src/quartz/lib_quartz.cr so that the @[Link]
+# directives resolve to the right pkg-config libraries.
+CRYSTAL_FLAGS_gtk  = -Dquartz_backend_gtk
+CRYSTAL_FLAGS_qt   = -Dquartz_backend_qt$(QT_VERSION)
+CRYSTAL_FLAGS_mac  =
+CRYSTAL_FLAGS_win  =
+CRYSTAL_FLAGS      = $(CRYSTAL_FLAGS_$(BACKEND))
+
 # ═══════════════════════════════════════════════════════════════════════
 # Build artifacts
 # ═══════════════════════════════════════════════════════════════════════
+#
+# Each backend compiles to its own object file so that switching
+# backends (e.g. `make gtk` after `make qt`) does not leave a stale
+# object around to confuse the linker. `make clean` removes all of
+# them.
 
-OBJ  = ext/quartz_helper.o
+OBJ_mac = ext/quartz_helper_mac.o
+OBJ_gtk = ext/quartz_helper_gtk.o
+OBJ_qt  = ext/quartz_helper_qt.o
+OBJ_win = ext/quartz_helper_win.o
+OBJ_all = $(OBJ_mac) $(OBJ_gtk) $(OBJ_qt) $(OBJ_win)
+
+OBJ  = $(OBJ_$(BACKEND))
 BIN  = bin/hello_world
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -82,8 +102,17 @@ BIN  = bin/hello_world
 
 all: $(OBJ)  ## Build the platform backend
 
-$(OBJ): $(SRC) ext/quartz_helper.h
-	$(CC) $(CFLAGS) $(SRC) -o $@
+$(OBJ_mac): $(SRC_mac) ext/quartz_helper.h
+	$(CC_mac) $(CFLAGS_mac) $(SRC_mac) -o $@
+
+$(OBJ_gtk): $(SRC_gtk) ext/quartz_helper.h
+	$(CC_gtk) $(CFLAGS_gtk) $(SRC_gtk) -o $@
+
+$(OBJ_qt): $(SRC_qt) ext/quartz_helper.h
+	$(CC_qt) $(CFLAGS_qt) $(SRC_qt) -o $@
+
+$(OBJ_win): $(SRC_win) ext/quartz_helper.h
+	$(CC_win) $(CFLAGS_win) $(SRC_win) -o $@
 
 mac:  ## Build with macOS AppKit backend
 	@$(MAKE) BACKEND=mac all
@@ -101,12 +130,15 @@ win:  ## Build with Windows Win32 backend
 
 examples: $(OBJ)  ## Build the hello_world example
 	@mkdir -p bin
-	crystal build examples/hello_world.cr -o $(BIN) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/hello_world.cr -o $(BIN) --link-flags="$(LDFLAGS)"
+
+spec: $(OBJ)  ## Run the crystal spec test suite
+	crystal spec $(CRYSTAL_FLAGS) --link-flags="$(LDFLAGS)"
 
 # ── Clean ──────────────────────────────────────────────────────────────
 
 clean:  ## Remove build artifacts
-	rm -f $(OBJ)
+	rm -f $(OBJ_all)
 	rm -rf bin/
 
 # ── Help ───────────────────────────────────────────────────────────────

@@ -1,18 +1,36 @@
 # Low-level C bindings to the platform-specific GUI backend.
 #
 # Platform backends (selected at compile time by the Makefile):
-#   macOS  → ext/quartz_helper_mac.m  (AppKit)
-#   Linux  → ext/quartz_helper_gtk.c  (GTK 3) or ext/quartz_helper_qt.cpp (Qt 5/6)
-#   Windows→ ext/quartz_helper_win.c  (Win32 API)
+#   macOS  → ext/quartz_helper_mac.o  (AppKit)
+#   Linux  → ext/quartz_helper_gtk.o  (GTK 3) or ext/quartz_helper_qt.o (Qt 5/6)
+#   Windows→ ext/quartz_helper_win.o  (Win32 API)
 #
 # All backends implement the same C API defined in `ext/quartz_helper.h`.
+# Each backend compiles to its own object file so that switching
+# backends never links against a stale object.
 {% if flag?(:darwin) %}
-  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper.o -framework AppKit -framework Foundation -lobjc")]
+  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper_mac.o -framework AppKit -framework Foundation -lobjc")]
 {% elsif flag?(:linux) %}
-  # Link flags for GTK/Qt are injected by the Makefile via `--link-flags`.
-  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper.o")]
+  # Linux link flags. The Makefile is the canonical source of truth
+  # (see LDFLAGS_gtk / LDFLAGS_qt) and overrides these via
+  # `crystal build --link-flags`. The defaults below let `crystal
+  # spec` work out-of-the-box by:
+  #   1. Auto-building the matching backend object via `make all`
+  #      (no-op if it's already up to date).
+  #   2. Resolving the right pkg-config libs at compile time.
+  # Pick a non-default backend with:
+  #   -Dquartz_backend_gtk   (GTK 3)
+  #   -Dquartz_backend_qt5   (Qt 5)
+  #   -Dquartz_backend_qt6   (Qt 6, default)
+  {% if flag?(:quartz_backend_gtk) %}
+    @[Link(ldflags: "`make -C #{__DIR__}/../.. BACKEND=gtk all >/dev/null 2>&1; pkg-config --libs gtk+-3.0 2>/dev/null` #{__DIR__}/../../ext/quartz_helper_gtk.o")]
+  {% elsif flag?(:quartz_backend_qt5) %}
+    @[Link(ldflags: "`make -C #{__DIR__}/../.. BACKEND=qt QT_VERSION=5 all >/dev/null 2>&1; pkg-config --libs Qt5Widgets 2>/dev/null` #{__DIR__}/../../ext/quartz_helper_qt.o -lstdc++")]
+  {% else %}
+    @[Link(ldflags: "`make -C #{__DIR__}/../.. BACKEND=qt all >/dev/null 2>&1; pkg-config --libs Qt6Widgets 2>/dev/null` #{__DIR__}/../../ext/quartz_helper_qt.o -lstdc++")]
+  {% end %}
 {% elsif flag?(:win32) %}
-  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper.o -lgdi32 -luser32 -lcomctl32")]
+  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper_win.o -lgdi32 -luser32 -lcomctl32")]
 {% else %}
   @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper.o")]
 {% end %}
