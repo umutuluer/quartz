@@ -14,6 +14,10 @@
 // Callback type: called when a widget event occurs (e.g. button click)
 typedef void (*QuartzCallback)(int32_t widget_id);
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // --- Application lifecycle ---
 void quartz_init(void);
 void quartz_run(void);
@@ -36,5 +40,9 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id);
 // --- Widget properties ---
 void quartz_widget_set_text(int32_t widget_id, const char* text);
 void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // QUARTZ_HELPER_H

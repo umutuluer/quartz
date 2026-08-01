@@ -3,101 +3,127 @@
 # ═══════════════════════════════════════════════════════════════════════
 #
 # Targets:
-#   make [mac]     Build with macOS AppKit backend  (auto-detected)
-#   make gtk       Build with Linux GTK 3 backend
-#   make qt        Build with Linux Qt 5/6 backend
-#   make win       Build with Windows Win32 backend
-#   make examples  Build the hello_world example app
-#   make clean     Remove build artifacts
+#   make [mac|gtk|qt|win]  Build the platform backend
+#   make examples           Build the hello_world example
+#   make clean              Remove build artifacts
+#   make help               Show this help
 #
-# Environment variables:
-#   QT_VERSION=6   Use Qt6 instead of Qt5  (with `make qt`)
+# Variables:
+#   BACKEND=gtk|qt|mac|win  Override auto-detected backend
+#   QT_VERSION=5|6          Select Qt version (auto-detected)
 
-.PHONY: all mac gtk qt win clean examples help
+.DEFAULT_GOAL := help
+.PHONY: all mac gtk qt win examples clean help
 
-# ── Auto-detect platform ───────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+# Platform detection
+# ═══════════════════════════════════════════════════════════════════════
 
 UNAME_S := $(shell uname -s)
 
 ifeq ($(UNAME_S),Darwin)
   BACKEND ?= mac
 else ifeq ($(UNAME_S),Linux)
-  BACKEND ?= gtk
+  BACKEND ?= qt
 else
   BACKEND ?= win
 endif
 
-# ── Backend source file ────────────────────────────────────────────────
+# ── Qt version (Linux, auto-detected) ──────────────────────────────────
 
-BACKEND_SRC_mac = ext/quartz_helper_mac.m
-BACKEND_SRC_gtk = ext/quartz_helper_gtk.c
-BACKEND_SRC_qt  = ext/quartz_helper_qt.cpp
-BACKEND_SRC_win = ext/quartz_helper_win.c
+QT_VERSION ?= $(shell pkg-config --exists Qt6Widgets && echo 6 || \
+                         (pkg-config --exists Qt5Widgets && echo 5 || echo 6))
 
-# ── Compiler and flags per backend ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+# Per-backend configuration
+# ═══════════════════════════════════════════════════════════════════════
 
+# Source file
+SRC_mac  = ext/quartz_helper_mac.m
+SRC_gtk  = ext/quartz_helper_gtk.c
+SRC_qt   = ext/quartz_helper_qt.cpp
+SRC_win  = ext/quartz_helper_win.c
+
+# Compiler
 CC_mac  = clang
-CFLAGS_mac  = -c -fobjc-arc
-LIBS_mac    =
-
 CC_gtk  = gcc
-CFLAGS_gtk  = -c -fPIC $$(pkg-config --cflags gtk+-3.0)
-LIBS_gtk    = $$(pkg-config --libs gtk+-3.0)
-
-QT_VERSION ?= 5
 CC_qt   = g++
-CFLAGS_qt   = -c -fPIC $$(pkg-config --cflags Qt$(QT_VERSION)Widgets)
-LIBS_qt     = $$(pkg-config --libs Qt$(QT_VERSION)Widgets)
-
 CC_win  = gcc
+
+# Compile flags
+CFLAGS_mac  = -c -fobjc-arc
+CFLAGS_gtk  = -c -fPIC $(shell pkg-config --cflags gtk+-3.0)
+CFLAGS_qt   = -c -fPIC $(shell pkg-config --cflags Qt$(QT_VERSION)Widgets)
 CFLAGS_win  = -c
-LIBS_win    =
 
-# ── Object output (always the same name) ───────────────────────────────
+# Link flags → passed to `crystal build --link-flags` for the example app.
+# macOS frameworks are embedded in src/quartz/lib_quartz.cr via @[Link].
+LDFLAGS_mac  =
+LDFLAGS_gtk  = $(shell pkg-config --libs gtk+-3.0)
+LDFLAGS_qt   = $(shell pkg-config --libs Qt$(QT_VERSION)Widgets) -lstdc++
+LDFLAGS_win  = -lgdi32 -luser32 -lcomctl32
 
-OBJ = ext/quartz_helper.o
+# Current backend values (computed once from BACKEND)
+SRC    = $(SRC_$(BACKEND))
+CC     = $(CC_$(BACKEND))
+CFLAGS = $(CFLAGS_$(BACKEND))
+LDFLAGS = $(LDFLAGS_$(BACKEND))
+
+# ═══════════════════════════════════════════════════════════════════════
+# Build artifacts
+# ═══════════════════════════════════════════════════════════════════════
+
+OBJ  = ext/quartz_helper.o
+BIN  = bin/hello_world
 
 # ═══════════════════════════════════════════════════════════════════════
 # Targets
 # ═══════════════════════════════════════════════════════════════════════
 
-all: $(OBJ)
+all: $(OBJ)  ## Build the platform backend
 
-$(OBJ): ext/quartz_helper.h
-	$(CC_$(BACKEND)) $(CFLAGS_$(BACKEND)) $(BACKEND_SRC_$(BACKEND)) -o $(OBJ)
+$(OBJ): $(SRC) ext/quartz_helper.h
+	$(CC) $(CFLAGS) $(SRC) -o $@
 
-mac:
+mac:  ## Build with macOS AppKit backend
 	@$(MAKE) BACKEND=mac all
 
-gtk:
+gtk:  ## Build with Linux GTK 3 backend
 	@$(MAKE) BACKEND=gtk all
 
-qt:
+qt:   ## Build with Linux Qt 5/6 backend
 	@$(MAKE) BACKEND=qt all
 
-win:
+win:  ## Build with Windows Win32 backend
 	@$(MAKE) BACKEND=win all
 
-# ── Example application ────────────────────────────────────────────────
+# ── Example ────────────────────────────────────────────────────────────
 
-examples: all
-	mkdir -p bin
-	crystal build examples/hello_world.cr -o bin/hello_world
+examples: $(OBJ)  ## Build the hello_world example
+	@mkdir -p bin
+	crystal build examples/hello_world.cr -o $(BIN) --link-flags="$(LDFLAGS)"
 
 # ── Clean ──────────────────────────────────────────────────────────────
 
-clean:
+clean:  ## Remove build artifacts
 	rm -f $(OBJ)
 	rm -rf bin/
 
 # ── Help ───────────────────────────────────────────────────────────────
 
-help:
+help:  ## Show this help
 	@echo "Quartz GUI toolkit — build system"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make [mac|gtk|qt|win]  Build the platform backend"
-	@echo "  make examples          Build and link the hello_world example"
+	@echo "  make examples           Build the hello_world example"
+	@echo "  make clean              Remove build artifacts"
+	@echo ""
+	@echo "Variables:"
+	@echo "  BACKEND=gtk|qt|mac|win  Override auto-detected backend"
+	@echo "  QT_VERSION=5|6          Select Qt version"
+	@echo ""
+	@echo "Current: BACKEND=$(BACKEND)  QT_VERSION=$(QT_VERSION)"
 	@echo "  make clean             Remove all build artifacts"
 	@echo ""
 	@echo "Current auto-detected backend: $(BACKEND)"
