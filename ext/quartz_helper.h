@@ -33,6 +33,8 @@ int32_t quartz_button_create(const char* title, int32_t x, int32_t y,
                              int32_t width, int32_t height);
 int32_t quartz_label_create(const char* text, int32_t x, int32_t y,
                             int32_t width, int32_t height);
+int32_t quartz_textbox_create(const char* text, int32_t x, int32_t y,
+                              int32_t width, int32_t height);
 
 // --- Widget hierarchy ---
 void quartz_widget_set_parent(int32_t child_id, int32_t parent_id);
@@ -40,6 +42,14 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id);
 // --- Widget properties ---
 void quartz_widget_set_text(int32_t widget_id, const char* text);
 void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback);
+
+// --- TextBox-specific ---
+const char* quartz_textbox_get_text(int32_t widget_id);
+void quartz_textbox_set_max_length(int32_t widget_id, int32_t max_length);
+void quartz_textbox_set_read_only(int32_t widget_id, int32_t read_only);
+void quartz_textbox_set_placeholder(int32_t widget_id, const char* text);
+void quartz_textbox_set_password_char(int32_t widget_id, char ch);
+void quartz_textbox_set_change_callback(int32_t widget_id, QuartzCallback callback);
 
 #ifdef __cplusplus
 }

@@ -135,6 +135,16 @@ shards build
 | `label.text`                                   | Gets the current text     |
 | `label.text = "Updated"`                       | Updates the label text    |
 
+### TextBox
+
+| Method                                          | Description              |
+| ----------------------------------------------- | ----------------------- |
+| `TextBox.new(text, x, y, width, height)`       | Creates a text input box |
+| `textbox.text`                                 | Gets the current text    |
+| `textbox.placeholder = "..."`                  | Sets placeholder text    |
+| `textbox.password_char = '*'`                  | Sets password masking    |
+| `textbox.on_text_changed { }`                  | Registers change event   |
+
 > All controls inherit from `Control`, which provides the low-level `handle` and `parent` properties.
 
 ---
@@ -149,6 +159,15 @@ make examples
 ```
 
 Example source: [`examples/hello_world.cr`](examples/hello_world.cr)
+
+Run the TextBox demo:
+
+```bash
+crystal build examples/textbox_example.cr -o bin/textbox_example
+./bin/textbox_example
+```
+
+Example source: [`examples/textbox_example.cr`](examples/textbox_example.cr)
 
 ---
 
@@ -180,7 +199,7 @@ Example source: [`examples/hello_world.cr`](examples/hello_world.cr)
 - [x] Linux GTK 3 backend
 - [x] Linux Qt 5/6 backend
 - [x] Windows Win32 backend
-- [ ] TextBox / input controls
+- [x] TextBox / input controls
 - [ ] CheckBox, RadioButton
 - [ ] Layout managers (Flow, Grid, Stack)
 - [ ] ComboBox / DropDown

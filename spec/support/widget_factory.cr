@@ -13,6 +13,10 @@ module WidgetFactory
     Quartz::Label.new(text, x, y, width, height)
   end
 
+  def self.textbox(text = "Test", x = 0, y = 0, width = 120, height = 25)
+    Quartz::TextBox.new(text, x, y, width, height)
+  end
+
   def self.window(title = "Test Window", width = 400, height = 300)
     Quartz::Window.new(title, width, height)
   end

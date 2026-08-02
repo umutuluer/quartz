@@ -18,6 +18,7 @@
 #include <QWidget>
 #include <QPushButton>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMap>
 #include <QAtomicInt>
 
@@ -37,6 +38,9 @@ static QMap<int32_t, QWidget*> *g_widgets = nullptr;
 // Callback registry: widget_id → QuartzCallback
 static QMap<int32_t, QuartzCallback> *g_callbacks = nullptr;
 
+// Change callback registry (for TextBox text changes)
+static QMap<int32_t, QuartzCallback> *g_change_callbacks = nullptr;
+
 // Thread-safe ID counter
 static QAtomicInt g_next_id(1);
 
@@ -44,6 +48,7 @@ void ensure_init() {
     if (!g_widgets) {
         g_widgets   = new QMap<int32_t, QWidget*>();
         g_callbacks = new QMap<int32_t, QuartzCallback>();
+        g_change_callbacks = new QMap<int32_t, QuartzCallback>();
     }
 }
 
@@ -148,6 +153,83 @@ int32_t quartz_label_create(const char *text, int32_t x, int32_t y,
     return wid;
 }
 
+// ── TextBox ───────────────────────────────────────────────────────────
+
+int32_t quartz_textbox_create(const char *text, int32_t x, int32_t y,
+                               int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QLineEdit *edit = new QLineEdit(QString::fromUtf8(text));
+    edit->setGeometry(x, y, width, height);
+
+    (*g_widgets)[wid] = edit;
+    return wid;
+}
+
+const char* quartz_textbox_get_text(int32_t widget_id) {
+    static QByteArray buffer;
+    if (g_widgets->contains(widget_id)) {
+        QWidget *widget = g_widgets->value(widget_id);
+        if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+            buffer = edit->text().toUtf8();
+            return buffer.constData();
+        }
+    }
+    return "";
+}
+
+void quartz_textbox_set_max_length(int32_t widget_id, int32_t max_length) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+        edit->setMaxLength(max_length);
+    }
+}
+
+void quartz_textbox_set_read_only(int32_t widget_id, int32_t read_only) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+        edit->setReadOnly(read_only ? true : false);
+    }
+}
+
+void quartz_textbox_set_placeholder(int32_t widget_id, const char* text) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+        edit->setPlaceholderText(QString::fromUtf8(text));
+    }
+}
+
+void quartz_textbox_set_password_char(int32_t widget_id, char ch) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+        edit->setEchoMode(QLineEdit::Password);
+    }
+}
+
+void quartz_textbox_set_change_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        (*g_change_callbacks)[widget_id] = callback;
+    } else {
+        g_change_callbacks->remove(widget_id);
+    }
+
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+        QObject::connect(edit, &QLineEdit::textChanged, [widget_id](const QString &) {
+            if (g_change_callbacks->contains(widget_id)) {
+                QuartzCallback cb = g_change_callbacks->value(widget_id);
+                if (cb) cb(widget_id);
+            }
+        });
+    }
+}
+
 // ── Widget hierarchy ──────────────────────────────────────────────────
 
 void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
@@ -173,6 +255,8 @@ void quartz_widget_set_text(int32_t widget_id, const char *text) {
         btn->setText(qText);
     } else if (QLabel *lbl = qobject_cast<QLabel*>(widget)) {
         lbl->setText(qText);
+    } else if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
+        edit->setText(qText);
     }
 }
 

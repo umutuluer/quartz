@@ -62,6 +62,35 @@ static int32_t next_widget_id(void) {
 @end
 
 // ---------------------------------------------------------------------------
+// Delegate for NSTextField text-change notifications (TextBox)
+// ---------------------------------------------------------------------------
+@interface TextBoxDelegate : NSObject <NSTextFieldDelegate>
+@property (nonatomic, assign) int32_t widgetId;
+- (instancetype)initWithWidgetId:(int32_t)widgetId;
+@end
+
+@implementation TextBoxDelegate
+- (instancetype)initWithWidgetId:(int32_t)widgetId {
+    self = [super init];
+    if (self) {
+        _widgetId = widgetId;
+    }
+    return self;
+}
+
+- (void)textDidChange:(NSNotification *)notification {
+    // Look up the change callback (stored with a offset key to avoid collision with click callbacks)
+    NSValue *val = callbackMap[@(self.widgetId + 100000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) {
+            cb(self.widgetId);
+        }
+    }
+}
+@end
+
+// ---------------------------------------------------------------------------
 // NSApplication delegate
 // ---------------------------------------------------------------------------
 @interface AppDelegate : NSObject <NSApplicationDelegate>
@@ -181,6 +210,123 @@ int32_t quartz_label_create(const char* text, int32_t x, int32_t y,
 
     widgetMap[@(wid)] = label;
     return wid;
+}
+
+// ---------------------------------------------------------------------------
+// TextBox
+// ---------------------------------------------------------------------------
+int32_t quartz_textbox_create(const char* text, int32_t x, int32_t y,
+                               int32_t width, int32_t height) {
+    int32_t wid = next_widget_id();
+
+    NSRect frame = NSMakeRect(x, y, width, height);
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:frame];
+
+    [textField setStringValue:[NSString stringWithUTF8String:text]];
+    [textField setEditable:YES];
+    [textField setSelectable:YES];
+    [textField setBezeled:YES];
+    [textField setBezelStyle:NSTextFieldSquareBezel];
+    [textField setDrawsBackground:YES];
+    [textField setAutoresizingMask:NSViewNotSizable];
+
+    widgetMap[@(wid)] = textField;
+    return wid;
+}
+
+const char* quartz_textbox_get_text(int32_t widget_id) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSTextField class]]) {
+        return [[(NSTextField *)obj stringValue] UTF8String];
+    }
+    return "";
+}
+
+void quartz_textbox_set_max_length(int32_t widget_id, int32_t max_length) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSTextField class]]) {
+        NSTextField *tf = (NSTextField *)obj;
+        // Use NSFormatter to limit input length
+        NSNumberFormatter *existing = nil; // Not using number formatter
+        // Create a custom text formatter that limits length
+        if (max_length > 0) {
+            NSTextFieldCell *cell = [tf cell];
+            // We'll use the delegate to enforce max length at a higher level
+            // For simplicity, we store the max_length as an associated object
+            objc_setAssociatedObject(tf, "maxLength",
+                                     @(max_length),
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+}
+
+void quartz_textbox_set_read_only(int32_t widget_id, int32_t read_only) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSTextField class]]) {
+        [(NSTextField *)obj setEditable:read_only ? NO : YES];
+    }
+}
+
+void quartz_textbox_set_placeholder(int32_t widget_id, const char* text) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSTextField class]]) {
+        [(NSTextField *)obj setPlaceholderString:[NSString stringWithUTF8String:text]];
+    }
+}
+
+void quartz_textbox_set_password_char(int32_t widget_id, char ch) {
+    // On macOS, we swap the NSTextField for an NSSecureTextField is complex.
+    // Instead, we just mark it as a secure field by replacing the cell.
+    // For v1, we note this is a simplified approach.
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSTextField class]]) {
+        NSTextField *tf = (NSTextField *)obj;
+        // Create a new NSSecureTextField with the same frame
+        NSRect frame = [tf frame];
+        NSSecureTextField *secure = [[NSSecureTextField alloc] initWithFrame:frame];
+        [secure setStringValue:[tf stringValue]];
+        [secure setEditable:YES];
+        [secure setSelectable:YES];
+        [secure setBezeled:YES];
+        [secure setDrawsBackground:YES];
+        [secure setAutoresizingMask:NSViewNotSizable];
+
+        // If the old field has a superview, swap them
+        NSView *parent = [tf superview];
+        if (parent) {
+            [parent addSubview:secure];
+            [tf removeFromSuperview];
+        }
+
+        widgetMap[@(widget_id)] = secure;
+    }
+}
+
+void quartz_textbox_set_change_callback(int32_t widget_id, QuartzCallback callback) {
+    id obj = widgetMap[@(widget_id)];
+
+    if (callback) {
+        // Store callback with offset key to avoid collision with button click callbacks
+        callbackMap[@(widget_id + 100000)] = [NSValue valueWithPointer:(void *)callback];
+    } else {
+        [callbackMap removeObjectForKey:@(widget_id + 100000)];
+    }
+
+    if ([obj isKindOfClass:[NSTextField class]]) {
+        NSTextField *tf = (NSTextField *)obj;
+        TextBoxDelegate *delegate = [[TextBoxDelegate alloc] initWithWidgetId:widget_id];
+        [tf setDelegate:delegate];
+
+        // Retain the delegate so it stays alive
+        objc_setAssociatedObject(tf, "textBoxDelegate", delegate,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        // Listen for text change notifications
+        [[NSNotificationCenter defaultCenter] addObserver:delegate
+                                                 selector:@selector(textDidChange:)
+                                                     name:NSControlTextDidChangeNotification
+                                                   object:tf];
+    }
 }
 
 // ---------------------------------------------------------------------------

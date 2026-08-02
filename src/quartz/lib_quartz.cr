@@ -53,6 +53,8 @@ lib LibQuartz
                            width : Int32, height : Int32) : Int32
   fun quartz_label_create(text : LibC::Char*, x : Int32, y : Int32,
                           width : Int32, height : Int32) : Int32
+  fun quartz_textbox_create(text : LibC::Char*, x : Int32, y : Int32,
+                            width : Int32, height : Int32) : Int32
 
   # --- Widget hierarchy ---
   fun quartz_widget_set_parent(child_id : Int32, parent_id : Int32) : Void
@@ -60,4 +62,12 @@ lib LibQuartz
   # --- Widget properties ---
   fun quartz_widget_set_text(widget_id : Int32, text : LibC::Char*) : Void
   fun quartz_widget_set_callback(widget_id : Int32, callback : QuartzCallback) : Void
+
+  # --- TextBox-specific ---
+  fun quartz_textbox_get_text(widget_id : Int32) : LibC::Char*
+  fun quartz_textbox_set_max_length(widget_id : Int32, max_length : Int32) : Void
+  fun quartz_textbox_set_read_only(widget_id : Int32, read_only : Int32) : Void
+  fun quartz_textbox_set_placeholder(widget_id : Int32, text : LibC::Char*) : Void
+  fun quartz_textbox_set_password_char(widget_id : Int32, ch : LibC::Char) : Void
+  fun quartz_textbox_set_change_callback(widget_id : Int32, callback : QuartzCallback) : Void
 end
