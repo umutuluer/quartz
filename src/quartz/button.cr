@@ -17,6 +17,17 @@ module Quartz
       LibQuartz.quartz_widget_set_text(@handle, value)
     end
 
+    # Enables or disables the button. A disabled button appears greyed out
+    # and does not respond to clicks.
+    # (.NET Control.Enabled)
+    #
+    # ```
+    # button.enabled = false
+    # ```
+    def enabled=(value : Bool)
+      LibQuartz.quartz_widget_set_enabled(@handle, value ? 1 : 0)
+    end
+
     # Registers a block to be called when the button is clicked.
     #
     # ```

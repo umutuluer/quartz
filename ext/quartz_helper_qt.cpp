@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMap>
 #include <QAtomicInt>
 
@@ -41,6 +42,9 @@ static QMap<int32_t, QuartzCallback> *g_callbacks = nullptr;
 // Change callback registry (for TextBox text changes)
 static QMap<int32_t, QuartzCallback> *g_change_callbacks = nullptr;
 
+// Selection callback registry (for ListBox selection changes)
+static QMap<int32_t, QuartzCallback> *g_selection_callbacks = nullptr;
+
 // Thread-safe ID counter
 static QAtomicInt g_next_id(1);
 
@@ -49,6 +53,7 @@ void ensure_init() {
         g_widgets   = new QMap<int32_t, QWidget*>();
         g_callbacks = new QMap<int32_t, QuartzCallback>();
         g_change_callbacks = new QMap<int32_t, QuartzCallback>();
+        g_selection_callbacks = new QMap<int32_t, QuartzCallback>();
     }
 }
 
@@ -276,6 +281,125 @@ void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback) {
         QObject::connect(btn, &QPushButton::clicked, [widget_id]() {
             if (g_callbacks->contains(widget_id)) {
                 QuartzCallback cb = g_callbacks->value(widget_id);
+                if (cb) cb(widget_id);
+            }
+        });
+    }
+}
+
+void quartz_widget_set_enabled(int32_t widget_id, int32_t enabled) {
+    if (g_widgets->contains(widget_id)) {
+        g_widgets->value(widget_id)->setEnabled(enabled ? true : false);
+    }
+}
+
+// ── ListBox ────────────────────────────────────────────────────────────
+
+int32_t quartz_listbox_create(int32_t x, int32_t y,
+                               int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QListWidget *listWidget = new QListWidget();
+    listWidget->setGeometry(x, y, width, height);
+
+    (*g_widgets)[wid] = listWidget;
+    return wid;
+}
+
+void quartz_listbox_add_item(int32_t widget_id, const char* text) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        list->addItem(QString::fromUtf8(text));
+    }
+}
+
+void quartz_listbox_remove_item(int32_t widget_id, int32_t index) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        if (index >= 0 && index < list->count()) {
+            QListWidgetItem *item = list->takeItem(index);
+            delete item;
+        }
+    }
+}
+
+void quartz_listbox_clear(int32_t widget_id) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        list->clear();
+    }
+}
+
+int32_t quartz_listbox_get_selected_index(int32_t widget_id) {
+    if (!g_widgets->contains(widget_id)) return -1;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        return list->currentRow();
+    }
+    return -1;
+}
+
+const char* quartz_listbox_get_selected_text(int32_t widget_id) {
+    static QByteArray buffer;
+    if (!g_widgets->contains(widget_id)) return NULL;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        QListWidgetItem *item = list->currentItem();
+        if (item) {
+            buffer = item->text().toUtf8();
+            return buffer.constData();
+        }
+    }
+    return NULL;
+}
+
+void quartz_listbox_set_selected_index(int32_t widget_id, int32_t index) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        list->setCurrentRow(index);
+    }
+}
+
+int32_t quartz_listbox_get_item_count(int32_t widget_id) {
+    if (!g_widgets->contains(widget_id)) return 0;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        return list->count();
+    }
+    return 0;
+}
+
+const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index) {
+    static QByteArray buffer;
+    if (!g_widgets->contains(widget_id)) return "";
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        if (index >= 0 && index < list->count()) {
+            buffer = list->item(index)->text().toUtf8();
+            return buffer.constData();
+        }
+    }
+    return "";
+}
+
+void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        (*g_selection_callbacks)[widget_id] = callback;
+    } else {
+        g_selection_callbacks->remove(widget_id);
+    }
+
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QListWidget *list = qobject_cast<QListWidget*>(widget)) {
+        QObject::connect(list, &QListWidget::currentRowChanged, [widget_id](int /*row*/) {
+            if (g_selection_callbacks->contains(widget_id)) {
+                QuartzCallback cb = g_selection_callbacks->value(widget_id);
                 if (cb) cb(widget_id);
             }
         });

@@ -20,4 +20,8 @@ module WidgetFactory
   def self.window(title = "Test Window", width = 400, height = 300)
     Quartz::Window.new(title, width, height)
   end
+
+  def self.listbox(x = 0, y = 0, width = 150, height = 100)
+    Quartz::ListBox.new(x, y, width, height)
+  end
 end

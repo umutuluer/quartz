@@ -95,6 +95,7 @@ OBJ_all = $(OBJ_mac) $(OBJ_gtk) $(OBJ_qt) $(OBJ_win)
 
 OBJ  = $(OBJ_$(BACKEND))
 BIN  = bin/hello_world
+BIN_LB = bin/listbox_example
 
 # ═══════════════════════════════════════════════════════════════════════
 # Targets
@@ -128,9 +129,10 @@ win:  ## Build with Windows Win32 backend
 
 # ── Example ────────────────────────────────────────────────────────────
 
-examples: $(OBJ)  ## Build the hello_world example
+examples: $(OBJ)  ## Build all example applications
 	@mkdir -p bin
 	crystal build $(CRYSTAL_FLAGS) examples/hello_world.cr -o $(BIN) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/listbox_example.cr -o $(BIN_LB) --link-flags="$(LDFLAGS)"
 
 spec: $(OBJ)  ## Run the crystal spec test suite
 	crystal spec $(CRYSTAL_FLAGS) --link-flags="$(LDFLAGS)"

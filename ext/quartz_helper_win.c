@@ -52,6 +52,9 @@ static CallbackEntry *g_callback_head = NULL;
 // Change callback registry: widget_id → QuartzCallback (for TextBox text changes)
 static CallbackEntry *g_change_callback_head = NULL;
 
+// Selection callback registry: widget_id → QuartzCallback (for ListBox selection changes)
+static CallbackEntry *g_selection_callback_head = NULL;
+
 static CallbackEntry* find_change_callback(int32_t widget_id) {
     CallbackEntry *e = g_change_callback_head;
     while (e) {
@@ -71,6 +74,28 @@ static void set_change_callback(int32_t widget_id, QuartzCallback callback) {
         e->callback  = callback;
         e->next      = g_change_callback_head;
         g_change_callback_head = e;
+    }
+}
+
+static CallbackEntry* find_selection_callback(int32_t widget_id) {
+    CallbackEntry *e = g_selection_callback_head;
+    while (e) {
+        if (e->widget_id == widget_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+static void set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    CallbackEntry *e = find_selection_callback(widget_id);
+    if (e) {
+        e->callback = callback;
+    } else if (callback) {
+        e = (CallbackEntry*)malloc(sizeof(CallbackEntry));
+        e->widget_id = widget_id;
+        e->callback  = callback;
+        e->next      = g_selection_callback_head;
+        g_selection_callback_head = e;
     }
 }
 
@@ -167,6 +192,12 @@ static LRESULT CALLBACK quartz_wnd_proc(HWND hwnd, UINT msg,
         if (notification == EN_CHANGE) {
             // TextBox text changed
             CallbackEntry *e = find_change_callback(widget_id);
+            if (e && e->callback) {
+                e->callback(widget_id);
+            }
+        } else if (notification == LBN_SELCHANGE) {
+            // ListBox selection changed
+            CallbackEntry *e = find_selection_callback(widget_id);
             if (e && e->callback) {
                 e->callback(widget_id);
             }
@@ -416,5 +447,118 @@ void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback) {
         set_callback(widget_id, callback);
     } else {
         remove_callback(widget_id);
+    }
+}
+
+void quartz_widget_set_enabled(int32_t widget_id, int32_t enabled) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        EnableWindow(hwnd, enabled ? TRUE : FALSE);
+    }
+}
+
+// ── ListBox ────────────────────────────────────────────────────────────
+
+int32_t quartz_listbox_create(int32_t x, int32_t y,
+                               int32_t width, int32_t height) {
+    HINSTANCE hInstance = GetModuleHandleA(NULL);
+    int32_t wid = InterlockedIncrement(&g_next_id);
+
+    HWND hwnd = CreateWindowExA(
+        0,
+        "LISTBOX",
+        "",
+        WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL | WS_BORDER,
+        x, y, (int)width, (int)height,
+        NULL,                    // parent set later via set_parent
+        (HMENU)(uintptr_t)wid,   // control ID = widget_id
+        hInstance,
+        NULL
+    );
+
+    SetPropA(hwnd, PROP_WIDGET_ID, (HANDLE)(uintptr_t)wid);
+    register_hwnd(wid, hwnd);
+
+    return wid;
+}
+
+void quartz_listbox_add_item(int32_t widget_id, const char* text) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        SendMessageA(hwnd, LB_ADDSTRING, 0, (LPARAM)text);
+    }
+}
+
+void quartz_listbox_remove_item(int32_t widget_id, int32_t index) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        SendMessageA(hwnd, LB_DELETESTRING, (WPARAM)index, 0);
+    }
+}
+
+void quartz_listbox_clear(int32_t widget_id) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        SendMessageA(hwnd, LB_RESETCONTENT, 0, 0);
+    }
+}
+
+int32_t quartz_listbox_get_selected_index(int32_t widget_id) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        LRESULT result = SendMessageA(hwnd, LB_GETCURSEL, 0, 0);
+        return (result == LB_ERR) ? -1 : (int32_t)result;
+    }
+    return -1;
+}
+
+const char* quartz_listbox_get_selected_text(int32_t widget_id) {
+    static char buffer[4096];
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        LRESULT index = SendMessageA(hwnd, LB_GETCURSEL, 0, 0);
+        if (index != LB_ERR) {
+            LRESULT len = SendMessageA(hwnd, LB_GETTEXTLEN, (WPARAM)index, 0);
+            if (len > 0 && len < (LRESULT)sizeof(buffer)) {
+                SendMessageA(hwnd, LB_GETTEXT, (WPARAM)index, (LPARAM)buffer);
+                return buffer;
+            }
+        }
+    }
+    return NULL;
+}
+
+void quartz_listbox_set_selected_index(int32_t widget_id, int32_t index) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        SendMessageA(hwnd, LB_SETCURSEL, (WPARAM)index, 0);
+    }
+}
+
+int32_t quartz_listbox_get_item_count(int32_t widget_id) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        LRESULT result = SendMessageA(hwnd, LB_GETCOUNT, 0, 0);
+        return (result == LB_ERR) ? 0 : (int32_t)result;
+    }
+    return 0;
+}
+
+const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index) {
+    static char buffer[4096];
+    HWND hwnd = find_hwnd(widget_id);
+    if (hwnd) {
+        LRESULT len = SendMessageA(hwnd, LB_GETTEXTLEN, (WPARAM)index, 0);
+        if (len > 0 && len < (LRESULT)sizeof(buffer)) {
+            SendMessageA(hwnd, LB_GETTEXT, (WPARAM)index, (LPARAM)buffer);
+            return buffer;
+        }
+    }
+    return "";
+}
+
+void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        set_selection_callback(widget_id, callback);
     }
 }

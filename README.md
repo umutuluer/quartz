@@ -145,6 +145,20 @@ shards build
 | `textbox.password_char = '*'`                  | Sets password masking    |
 | `textbox.on_text_changed { }`                  | Registers change event   |
 
+### ListBox
+
+| Method                                          | Description                    |
+| ----------------------------------------------- | ------------------------------ |
+| `ListBox.new(x, y, width, height)`             | Creates a scrollable list      |
+| `listbox.add_item("Item")`                     | Adds an item to the list       |
+| `listbox.remove_item(index)`                   | Removes the item at index      |
+| `listbox.clear`                                | Removes all items              |
+| `listbox.selected_index`                       | Gets / sets selected index     |
+| `listbox.selected_text`                        | Gets selected item text or nil |
+| `listbox.item_count`                           | Returns the number of items    |
+| `listbox.item_text(index)`                     | Gets the text at given index   |
+| `listbox.on_selection_changed { }`             | Registers selection change     |
+
 > All controls inherit from `Control`, which provides the low-level `handle` and `parent` properties.
 
 ---
@@ -169,6 +183,15 @@ crystal build examples/textbox_example.cr -o bin/textbox_example
 
 Example source: [`examples/textbox_example.cr`](examples/textbox_example.cr)
 
+Run the ListBox demo:
+
+```bash
+crystal build examples/listbox_example.cr -o bin/listbox_example
+./bin/listbox_example
+```
+
+Example source: [`examples/listbox_example.cr`](examples/listbox_example.cr)
+
 ---
 
 ## 🏗️ Architecture
@@ -177,6 +200,7 @@ Example source: [`examples/textbox_example.cr`](examples/textbox_example.cr)
 ┌──────────────────────────────────────────┐
 │            Crystal (src/)                 │
 │  Application · Window · Button · Label    │
+│       TextBox · ListBox                   │
 │                  │                        │
 │            lib_quartz.cr                  │
 │          (C bindings via @[Link])         │
@@ -200,6 +224,7 @@ Example source: [`examples/textbox_example.cr`](examples/textbox_example.cr)
 - [x] Linux Qt 5/6 backend
 - [x] Windows Win32 backend
 - [x] TextBox / input controls
+- [x] ListBox
 - [ ] CheckBox, RadioButton
 - [ ] Layout managers (Flow, Grid, Stack)
 - [ ] ComboBox / DropDown

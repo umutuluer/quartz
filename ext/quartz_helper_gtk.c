@@ -36,6 +36,9 @@ static GHashTable *callback_map = NULL;
 // Change callback registry (for TextBox text changes)
 static GHashTable *change_callback_map = NULL;
 
+// Selection callback registry (for ListBox selection changes)
+static GHashTable *selection_callback_map = NULL;
+
 // ── Widget ID counter ──────────────────────────────────────────────────
 
 static atomic_int next_id = 1;
@@ -53,6 +56,7 @@ static void ensure_init(void) {
                                              NULL, free);
         callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         change_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        selection_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     }
 }
 
@@ -70,6 +74,15 @@ static void on_button_clicked(GtkWidget *widget, gpointer user_data) {
 static void on_entry_changed(GtkEditable *editable, gpointer user_data) {
     int32_t wid = GPOINTER_TO_INT(user_data);
     QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(change_callback_map,
+                                                            GINT_TO_POINTER(wid));
+    if (cb) {
+        cb(wid);
+    }
+}
+
+static void on_listbox_selection_changed(GtkTreeSelection *selection, gpointer user_data) {
+    int32_t wid = GPOINTER_TO_INT(user_data);
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(selection_callback_map,
                                                             GINT_TO_POINTER(wid));
     if (cb) {
         cb(wid);
@@ -319,6 +332,201 @@ void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback) {
     if (widget && GTK_IS_BUTTON(widget)) {
         g_signal_connect(widget, "clicked",
                          G_CALLBACK(on_button_clicked),
+                         GINT_TO_POINTER(widget_id));
+    }
+}
+
+void quartz_widget_set_enabled(int32_t widget_id, int32_t enabled) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (widget) {
+        gtk_widget_set_sensitive(widget, enabled ? TRUE : FALSE);
+    }
+}
+
+// ── ListBox ────────────────────────────────────────────────────────────
+
+int32_t quartz_listbox_create(int32_t x, int32_t y,
+                               int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    // Create GtkListStore with a single text column
+    GtkListStore *store = gtk_list_store_new(1, G_TYPE_STRING);
+
+    // Create GtkTreeView backed by the list store
+    GtkWidget *treeView = gtk_tree_view_new_with_model(GTK_TREE_MODEL(store));
+    // Release our reference on the store (treeView owns it now)
+    g_object_unref(store);
+
+    // Add a text renderer column
+    GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+    GtkTreeViewColumn *column = gtk_tree_view_column_new_with_attributes(
+        "", renderer, "text", 0, NULL);
+    gtk_tree_view_append_column(GTK_TREE_VIEW(treeView), column);
+    gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(treeView), FALSE);
+
+    // Wrap in a GtkScrolledWindow for scrollbars
+    GtkWidget *scrollWin = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrollWin),
+                                   GTK_POLICY_NEVER,
+                                   GTK_POLICY_AUTOMATIC);
+    gtk_container_add(GTK_CONTAINER(scrollWin), treeView);
+    gtk_widget_set_size_request(scrollWin, width, height);
+
+    g_hash_table_insert(widget_map, GINT_TO_POINTER(wid), scrollWin);
+
+    // Store position so quartz_widget_set_parent can use it
+    WidgetPos *pos = malloc(sizeof(WidgetPos));
+    pos->x = x;
+    pos->y = y;
+    g_hash_table_insert(position_map, GINT_TO_POINTER(wid), pos);
+
+    return wid;
+}
+
+// Helper: get the GtkTreeView and GtkListStore from a ListBox widget_id
+static GtkTreeView* get_listbox_treeview(int32_t widget_id) {
+    GtkWidget *scrollWin = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                             GINT_TO_POINTER(widget_id));
+    if (!scrollWin || !GTK_IS_SCROLLED_WINDOW(scrollWin)) return NULL;
+
+    GList *children = gtk_container_get_children(GTK_CONTAINER(scrollWin));
+    if (!children) return NULL;
+
+    GtkWidget *treeView = GTK_WIDGET(children->data);
+    g_list_free(children);
+
+    return GTK_IS_TREE_VIEW(treeView) ? GTK_TREE_VIEW(treeView) : NULL;
+}
+
+static GtkListStore* get_listbox_store(int32_t widget_id) {
+    GtkTreeView *treeView = get_listbox_treeview(widget_id);
+    if (!treeView) return NULL;
+
+    GtkTreeModel *model = gtk_tree_view_get_model(treeView);
+    return GTK_IS_LIST_STORE(model) ? GTK_LIST_STORE(model) : NULL;
+}
+
+void quartz_listbox_add_item(int32_t widget_id, const char* text) {
+    GtkListStore *store = get_listbox_store(widget_id);
+    if (!store) return;
+
+    GtkTreeIter iter;
+    gtk_list_store_append(store, &iter);
+    gtk_list_store_set(store, &iter, 0, text, -1);
+}
+
+void quartz_listbox_remove_item(int32_t widget_id, int32_t index) {
+    GtkListStore *store = get_listbox_store(widget_id);
+    if (!store) return;
+
+    GtkTreeIter iter;
+    if (gtk_tree_model_iter_nth_child(GTK_TREE_MODEL(store), &iter, NULL, index)) {
+        gtk_list_store_remove(store, &iter);
+    }
+}
+
+void quartz_listbox_clear(int32_t widget_id) {
+    GtkListStore *store = get_listbox_store(widget_id);
+    if (store) {
+        gtk_list_store_clear(store);
+    }
+}
+
+int32_t quartz_listbox_get_selected_index(int32_t widget_id) {
+    GtkTreeView *treeView = get_listbox_treeview(widget_id);
+    if (!treeView) return -1;
+
+    GtkTreeSelection *selection = gtk_tree_view_get_selection(treeView);
+    GtkTreeIter iter;
+    GtkTreeModel *model = NULL;
+
+    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+        GtkTreePath *path = gtk_tree_model_get_path(model, &iter);
+        int32_t index = (int32_t)gtk_tree_path_get_indices(path)[0];
+        gtk_tree_path_free(path);
+        return index;
+    }
+    return -1;
+}
+
+const char* quartz_listbox_get_selected_text(int32_t widget_id) {
+    static char buffer[4096];
+    GtkTreeView *treeView = get_listbox_treeview(widget_id);
+    if (!treeView) return NULL;
+
+    GtkTreeSelection *selection = gtk_tree_view_get_selection(treeView);
+    GtkTreeIter iter;
+    GtkTreeModel *model = NULL;
+
+    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+        gchar *text = NULL;
+        gtk_tree_model_get(model, &iter, 0, &text, -1);
+        if (text) {
+            g_strlcpy(buffer, text, sizeof(buffer));
+            g_free(text);
+            return buffer;
+        }
+    }
+    return NULL;
+}
+
+void quartz_listbox_set_selected_index(int32_t widget_id, int32_t index) {
+    GtkTreeView *treeView = get_listbox_treeview(widget_id);
+    if (!treeView) return;
+
+    GtkTreeSelection *selection = gtk_tree_view_get_selection(treeView);
+
+    if (index < 0) {
+        gtk_tree_selection_unselect_all(selection);
+        return;
+    }
+
+    GtkTreePath *path = gtk_tree_path_new_from_indices(index, -1);
+    if (path) {
+        gtk_tree_selection_select_path(selection, path);
+        gtk_tree_path_free(path);
+    }
+}
+
+int32_t quartz_listbox_get_item_count(int32_t widget_id) {
+    GtkListStore *store = get_listbox_store(widget_id);
+    return store ? gtk_tree_model_iter_n_children(GTK_TREE_MODEL(store), NULL) : 0;
+}
+
+const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index) {
+    static char buffer[4096];
+    GtkListStore *store = get_listbox_store(widget_id);
+    if (!store) return "";
+
+    GtkTreeIter iter;
+    if (gtk_tree_model_iter_nth_child(GTK_TREE_MODEL(store), &iter, NULL, index)) {
+        gchar *text = NULL;
+        gtk_tree_model_get(GTK_TREE_MODEL(store), &iter, 0, &text, -1);
+        if (text) {
+            g_strlcpy(buffer, text, sizeof(buffer));
+            g_free(text);
+            return buffer;
+        }
+    }
+    return "";
+}
+
+void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    GtkTreeView *treeView = get_listbox_treeview(widget_id);
+
+    if (callback) {
+        g_hash_table_insert(selection_callback_map, GINT_TO_POINTER(widget_id),
+                            (gpointer)callback);
+    } else {
+        g_hash_table_remove(selection_callback_map, GINT_TO_POINTER(widget_id));
+    }
+
+    if (treeView) {
+        GtkTreeSelection *selection = gtk_tree_view_get_selection(treeView);
+        g_signal_connect(selection, "changed",
+                         G_CALLBACK(on_listbox_selection_changed),
                          GINT_TO_POINTER(widget_id));
     }
 }

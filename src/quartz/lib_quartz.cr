@@ -62,6 +62,7 @@ lib LibQuartz
   # --- Widget properties ---
   fun quartz_widget_set_text(widget_id : Int32, text : LibC::Char*) : Void
   fun quartz_widget_set_callback(widget_id : Int32, callback : QuartzCallback) : Void
+  fun quartz_widget_set_enabled(widget_id : Int32, enabled : Int32) : Void
 
   # --- TextBox-specific ---
   fun quartz_textbox_get_text(widget_id : Int32) : LibC::Char*
@@ -70,4 +71,17 @@ lib LibQuartz
   fun quartz_textbox_set_placeholder(widget_id : Int32, text : LibC::Char*) : Void
   fun quartz_textbox_set_password_char(widget_id : Int32, ch : LibC::Char) : Void
   fun quartz_textbox_set_change_callback(widget_id : Int32, callback : QuartzCallback) : Void
+
+  # --- ListBox-specific ---
+  fun quartz_listbox_create(x : Int32, y : Int32,
+                            width : Int32, height : Int32) : Int32
+  fun quartz_listbox_add_item(widget_id : Int32, text : LibC::Char*) : Void
+  fun quartz_listbox_remove_item(widget_id : Int32, index : Int32) : Void
+  fun quartz_listbox_clear(widget_id : Int32) : Void
+  fun quartz_listbox_get_selected_index(widget_id : Int32) : Int32
+  fun quartz_listbox_get_selected_text(widget_id : Int32) : LibC::Char*
+  fun quartz_listbox_set_selected_index(widget_id : Int32, index : Int32) : Void
+  fun quartz_listbox_get_item_count(widget_id : Int32) : Int32
+  fun quartz_listbox_get_item_text(widget_id : Int32, index : Int32) : LibC::Char*
+  fun quartz_listbox_set_selection_callback(widget_id : Int32, callback : QuartzCallback) : Void
 end

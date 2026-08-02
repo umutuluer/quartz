@@ -91,6 +91,49 @@ static int32_t next_widget_id(void) {
 @end
 
 // ---------------------------------------------------------------------------
+// Delegate for NSTableView selection-change notifications (ListBox)
+// ---------------------------------------------------------------------------
+@interface ListBoxDelegate : NSObject <NSTableViewDelegate, NSTableViewDataSource>
+@property (nonatomic, assign) int32_t widgetId;
+@property (nonatomic, strong) NSMutableArray<NSString*> *items;
+- (instancetype)initWithWidgetId:(int32_t)widgetId;
+@end
+
+@implementation ListBoxDelegate
+- (instancetype)initWithWidgetId:(int32_t)widgetId {
+    self = [super init];
+    if (self) {
+        _widgetId = widgetId;
+        _items = [NSMutableArray array];
+    }
+    return self;
+}
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    return (NSInteger)[_items count];
+}
+
+- (id)tableView:(NSTableView *)tableView
+    objectValueForTableColumn:(NSTableColumn *)tableColumn
+                          row:(NSInteger)row {
+    if (row >= 0 && row < (NSInteger)[_items count]) {
+        return _items[(NSUInteger)row];
+    }
+    return @"";
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    NSValue *val = callbackMap[@(self.widgetId + 200000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) {
+            cb(self.widgetId);
+        }
+    }
+}
+@end
+
+// ---------------------------------------------------------------------------
 // NSApplication delegate
 // ---------------------------------------------------------------------------
 @interface AppDelegate : NSObject <NSApplicationDelegate>
@@ -385,5 +428,162 @@ void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback) {
         callbackMap[@(widget_id)] = [NSValue valueWithPointer:(void *)callback];
     } else {
         [callbackMap removeObjectForKey:@(widget_id)];
+    }
+}
+
+void quartz_widget_set_enabled(int32_t widget_id, int32_t enabled) {
+    id obj = widgetMap[@(widget_id)];
+
+    if ([obj respondsToSelector:@selector(setEnabled:)]) {
+        [(NSControl *)obj setEnabled:enabled ? YES : NO];
+    }
+}
+int32_t quartz_listbox_create(int32_t x, int32_t y,
+                               int32_t width, int32_t height) {
+    int32_t wid = next_widget_id();
+
+    // Create NSScrollView (container with scrollbars)
+    NSRect scrollFrame = NSMakeRect(x, y, width, height);
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:scrollFrame];
+    [scrollView setHasVerticalScroller:YES];
+    [scrollView setHasHorizontalScroller:NO];
+    [scrollView setAutoresizingMask:NSViewNotSizable];
+    [scrollView setBorderType:NSBezelBorder];
+
+    // Create NSTableView (single column)
+    NSTableView *tableView = [[NSTableView alloc] initWithFrame:scrollFrame];
+    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"items"];
+    [column setWidth:(CGFloat)width - 20.0f]; // leave room for scrollbar
+    [tableView addTableColumn:column];
+    [tableView setHeaderView:nil];           // no header row
+    [tableView setAllowsMultipleSelection:NO];
+    [tableView setAutoresizingMask:NSViewNotSizable];
+
+    // Create delegate that also holds the data array
+    ListBoxDelegate *delegate = [[ListBoxDelegate alloc] initWithWidgetId:wid];
+    [tableView setDelegate:delegate];
+    [tableView setDataSource:delegate];
+
+    // Retain delegate via associated object on the tableView
+    objc_setAssociatedObject(tableView, "listBoxDelegate", delegate,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    [scrollView setDocumentView:tableView];
+
+    widgetMap[@(wid)] = scrollView;
+    return wid;
+}
+
+static ListBoxDelegate* get_listbox_delegate(int32_t widget_id) {
+    id obj = widgetMap[@(widget_id)];
+    NSTableView *tableView = nil;
+
+    if ([obj isKindOfClass:[NSScrollView class]]) {
+        tableView = (NSTableView *)[(NSScrollView *)obj documentView];
+    } else if ([obj isKindOfClass:[NSTableView class]]) {
+        tableView = (NSTableView *)obj;
+    }
+
+    if (tableView) {
+        ListBoxDelegate *delegate = (ListBoxDelegate *)[tableView delegate];
+        if ([delegate isKindOfClass:[ListBoxDelegate class]]) {
+            return delegate;
+        }
+    }
+    return nil;
+}
+
+void quartz_listbox_add_item(int32_t widget_id, const char* text) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate) {
+        [delegate.items addObject:[NSString stringWithUTF8String:text]];
+        NSTableView *tableView = (NSTableView *)[(NSScrollView *)widgetMap[@(widget_id)] documentView];
+        if (tableView) {
+            [tableView reloadData];
+        }
+    }
+}
+
+void quartz_listbox_remove_item(int32_t widget_id, int32_t index) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate && index >= 0 && index < (int32_t)[delegate.items count]) {
+        [delegate.items removeObjectAtIndex:(NSUInteger)index];
+        NSTableView *tableView = (NSTableView *)[(NSScrollView *)widgetMap[@(widget_id)] documentView];
+        if (tableView) {
+            [tableView reloadData];
+        }
+    }
+}
+
+void quartz_listbox_clear(int32_t widget_id) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate) {
+        [delegate.items removeAllObjects];
+        NSTableView *tableView = (NSTableView *)[(NSScrollView *)widgetMap[@(widget_id)] documentView];
+        if (tableView) {
+            [tableView reloadData];
+        }
+    }
+}
+
+int32_t quartz_listbox_get_selected_index(int32_t widget_id) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate) {
+        NSTableView *tableView = (NSTableView *)[(NSScrollView *)widgetMap[@(widget_id)] documentView];
+        if (tableView) {
+            NSInteger row = [tableView selectedRow];
+            return (row >= 0 && row < (NSInteger)[delegate.items count]) ? (int32_t)row : -1;
+        }
+    }
+    return -1;
+}
+
+const char* quartz_listbox_get_selected_text(int32_t widget_id) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate) {
+        NSTableView *tableView = (NSTableView *)[(NSScrollView *)widgetMap[@(widget_id)] documentView];
+        if (tableView) {
+            NSInteger row = [tableView selectedRow];
+            if (row >= 0 && row < (NSInteger)[delegate.items count]) {
+                return [[delegate.items objectAtIndex:(NSUInteger)row] UTF8String];
+            }
+        }
+    }
+    return NULL;
+}
+
+void quartz_listbox_set_selected_index(int32_t widget_id, int32_t index) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate) {
+        NSTableView *tableView = (NSTableView *)[(NSScrollView *)widgetMap[@(widget_id)] documentView];
+        if (tableView && index >= -1 && index < (int32_t)[delegate.items count]) {
+            if (index >= 0) {
+                [tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)index]
+                      byExtendingSelection:NO];
+            } else {
+                [tableView deselectAll:nil];
+            }
+        }
+    }
+}
+
+int32_t quartz_listbox_get_item_count(int32_t widget_id) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    return delegate ? (int32_t)[delegate.items count] : 0;
+}
+
+const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index) {
+    ListBoxDelegate *delegate = get_listbox_delegate(widget_id);
+    if (delegate && index >= 0 && index < (int32_t)[delegate.items count]) {
+        return [[delegate.items objectAtIndex:(NSUInteger)index] UTF8String];
+    }
+    return "";
+}
+
+void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        callbackMap[@(widget_id + 200000)] = [NSValue valueWithPointer:(void *)callback];
+    } else {
+        [callbackMap removeObjectForKey:@(widget_id + 200000)];
     }
 }

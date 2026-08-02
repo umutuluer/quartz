@@ -42,6 +42,7 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id);
 // --- Widget properties ---
 void quartz_widget_set_text(int32_t widget_id, const char* text);
 void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback);
+void quartz_widget_set_enabled(int32_t widget_id, int32_t enabled);
 
 // --- TextBox-specific ---
 const char* quartz_textbox_get_text(int32_t widget_id);
@@ -50,6 +51,19 @@ void quartz_textbox_set_read_only(int32_t widget_id, int32_t read_only);
 void quartz_textbox_set_placeholder(int32_t widget_id, const char* text);
 void quartz_textbox_set_password_char(int32_t widget_id, char ch);
 void quartz_textbox_set_change_callback(int32_t widget_id, QuartzCallback callback);
+
+// --- ListBox-specific ---
+int32_t quartz_listbox_create(int32_t x, int32_t y,
+                               int32_t width, int32_t height);
+void    quartz_listbox_add_item(int32_t widget_id, const char* text);
+void    quartz_listbox_remove_item(int32_t widget_id, int32_t index);
+void    quartz_listbox_clear(int32_t widget_id);
+int32_t quartz_listbox_get_selected_index(int32_t widget_id);
+const char* quartz_listbox_get_selected_text(int32_t widget_id);
+void    quartz_listbox_set_selected_index(int32_t widget_id, int32_t index);
+int32_t quartz_listbox_get_item_count(int32_t widget_id);
+const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index);
+void    quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback);
 
 #ifdef __cplusplus
 }
