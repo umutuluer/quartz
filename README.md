@@ -159,6 +159,30 @@ shards build
 | `listbox.item_text(index)`                     | Gets the text at given index   |
 | `listbox.on_selection_changed { }`             | Registers selection change     |
 
+### CheckBox
+
+| Method                                             | Description                       |
+| ------------------------------------------------- | --------------------------------- |
+| `CheckBox.new(text, x, y, width, height)`        | Creates a checkbox                |
+| `CheckBox.new(text, x, y, w, h, checked: true)`  | Creates a pre-checked checkbox    |
+| `check_box.text = "Enable"`                      | Updates the label                 |
+| `check_box.checked`                              | Returns whether checked           |
+| `check_box.checked = true`                       | Sets the checked state            |
+| `check_box.on_checked_changed { }`               | Registers state-change callback   |
+
+### RadioButton
+
+| Method                                                | Description                            |
+| ---------------------------------------------------- | -------------------------------------- |
+| `RadioButton.new(text, x, y, width, height)`        | Creates a radio button                 |
+| `RadioButton.new(text, x, y, w, h, checked: true)`  | Creates a pre-selected radio button    |
+| `radio_button.text = "Option"`                      | Updates the label                      |
+| `radio_button.checked`                              | Returns whether selected               |
+| `radio_button.checked = true`                       | Selects (unchecks siblings)            |
+| `radio_button.on_checked_changed { }`               | Registers state-change callback        |
+
+> Radio buttons in the same window are mutually exclusive — selecting one automatically deselects others. Radio buttons in different windows are independent.
+
 > All controls inherit from `Control`, which provides the low-level `handle` and `parent` properties.
 
 ---
@@ -192,6 +216,24 @@ crystal build examples/listbox_example.cr -o bin/listbox_example
 
 Example source: [`examples/listbox_example.cr`](examples/listbox_example.cr)
 
+Run the CheckBox demo:
+
+```bash
+crystal build examples/checkbox_example.cr -o bin/checkbox_example
+./bin/checkbox_example
+```
+
+Example source: [`examples/checkbox_example.cr`](examples/checkbox_example.cr)
+
+Run the RadioButton demo:
+
+```bash
+crystal build examples/radiobutton_example.cr -o bin/radiobutton_example
+./bin/radiobutton_example
+```
+
+Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example.cr)
+
 ---
 
 ## 🏗️ Architecture
@@ -200,7 +242,8 @@ Example source: [`examples/listbox_example.cr`](examples/listbox_example.cr)
 ┌──────────────────────────────────────────┐
 │            Crystal (src/)                 │
 │  Application · Window · Button · Label    │
-│       TextBox · ListBox                   │
+│       TextBox · ListBox                     │
+│       CheckBox · RadioButton               │
 │                  │                        │
 │            lib_quartz.cr                  │
 │          (C bindings via @[Link])         │
@@ -225,10 +268,10 @@ Example source: [`examples/listbox_example.cr`](examples/listbox_example.cr)
 - [x] Windows Win32 backend
 - [x] TextBox / input controls
 - [x] ListBox
-- [ ] CheckBox, RadioButton
-- [ ] Layout managers (Flow, Grid, Stack)
+- [x] CheckBox, RadioButton
 - [ ] ComboBox / DropDown
 - [ ] File dialogs
+- [ ] Layout managers (Flow, Grid, Stack)
 - [ ] Menu bar & context menus
 - [ ] Comprehensive test suite
 

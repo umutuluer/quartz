@@ -35,7 +35,7 @@ describe Quartz::Control do
 
     it "can be assigned" do
       parent = ControlSpec::TestControl.new(10)
-      child  = ControlSpec::TestControl.new(20)
+      child = ControlSpec::TestControl.new(20)
 
       child.parent = parent
       child.parent.should eq(parent)

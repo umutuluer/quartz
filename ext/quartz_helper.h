@@ -65,6 +65,15 @@ int32_t quartz_listbox_get_item_count(int32_t widget_id);
 const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index);
 void    quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback);
 
+// --- Toggle (CheckBox / RadioButton) ---
+int32_t quartz_checkbox_create(const char* text, int32_t x, int32_t y,
+                                int32_t width, int32_t height);
+int32_t quartz_radiobutton_create(const char* text, int32_t x, int32_t y,
+                                   int32_t width, int32_t height);
+int32_t quartz_toggle_get_checked(int32_t widget_id);
+void    quartz_toggle_set_checked(int32_t widget_id, int32_t checked);
+void    quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callback);
+
 #ifdef __cplusplus
 }
 #endif

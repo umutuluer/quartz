@@ -55,6 +55,9 @@ static CallbackEntry *g_change_callback_head = NULL;
 // Selection callback registry: widget_id → QuartzCallback (for ListBox selection changes)
 static CallbackEntry *g_selection_callback_head = NULL;
 
+// Toggle change callback registry: widget_id → QuartzCallback (for CheckBox/RadioButton)
+static CallbackEntry *g_toggle_callback_head = NULL;
+
 static CallbackEntry* find_change_callback(int32_t widget_id) {
     CallbackEntry *e = g_change_callback_head;
     while (e) {
@@ -96,6 +99,28 @@ static void set_selection_callback(int32_t widget_id, QuartzCallback callback) {
         e->callback  = callback;
         e->next      = g_selection_callback_head;
         g_selection_callback_head = e;
+    }
+}
+
+static CallbackEntry* find_toggle_callback(int32_t widget_id) {
+    CallbackEntry *e = g_toggle_callback_head;
+    while (e) {
+        if (e->widget_id == widget_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+static void set_toggle_callback(int32_t widget_id, QuartzCallback callback) {
+    CallbackEntry *e = find_toggle_callback(widget_id);
+    if (e) {
+        e->callback = callback;
+    } else if (callback) {
+        e = (CallbackEntry*)malloc(sizeof(CallbackEntry));
+        e->widget_id = widget_id;
+        e->callback  = callback;
+        e->next      = g_toggle_callback_head;
+        g_toggle_callback_head = e;
     }
 }
 
@@ -201,8 +226,20 @@ static LRESULT CALLBACK quartz_wnd_proc(HWND hwnd, UINT msg,
             if (e && e->callback) {
                 e->callback(widget_id);
             }
+        } else if (notification == BN_CLICKED) {
+            // Check toggle callback first (for CheckBox / RadioButton)
+            CallbackEntry *te = find_toggle_callback(widget_id);
+            if (te && te->callback) {
+                te->callback(widget_id);
+            } else {
+                // Fall back to generic button callback
+                CallbackEntry *e = find_callback(widget_id);
+                if (e && e->callback) {
+                    e->callback(widget_id);
+                }
+            }
         } else {
-            // Button click or other control notification
+            // Other control notification — generic callback
             CallbackEntry *e = find_callback(widget_id);
             if (e && e->callback) {
                 e->callback(widget_id);
@@ -560,5 +597,89 @@ const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index) {
 void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
     if (callback) {
         set_selection_callback(widget_id, callback);
+    }
+}
+
+// ── CheckBox ───────────────────────────────────────────────────────────
+
+int32_t quartz_checkbox_create(const char *title, int32_t x, int32_t y,
+                                int32_t width, int32_t height) {
+    HINSTANCE hInstance = GetModuleHandleA(NULL);
+    int32_t wid = InterlockedIncrement(&g_next_id);
+
+    HWND hwnd = CreateWindowExA(
+        0,
+        "BUTTON",
+        title,
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        x, y, (int)width, (int)height,
+        NULL,                    // parent set later via set_parent
+        (HMENU)(uintptr_t)wid,   // control ID = widget_id
+        hInstance,
+        NULL
+    );
+
+    SetPropA(hwnd, PROP_WIDGET_ID, (HANDLE)(uintptr_t)wid);
+    register_hwnd(wid, hwnd);
+
+    return wid;
+}
+
+// ── RadioButton ────────────────────────────────────────────────────────
+
+int32_t quartz_radiobutton_create(const char *title, int32_t x, int32_t y,
+                                   int32_t width, int32_t height) {
+    HINSTANCE hInstance = GetModuleHandleA(NULL);
+    int32_t wid = InterlockedIncrement(&g_next_id);
+
+    HWND hwnd = CreateWindowExA(
+        0,
+        "BUTTON",
+        title,
+        WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+        x, y, (int)width, (int)height,
+        NULL,                    // parent set later via set_parent
+        (HMENU)(uintptr_t)wid,   // control ID = widget_id
+        hInstance,
+        NULL
+    );
+
+    SetPropA(hwnd, PROP_WIDGET_ID, (HANDLE)(uintptr_t)wid);
+    register_hwnd(wid, hwnd);
+
+    return wid;
+}
+
+// ── Toggle state (shared by CheckBox and RadioButton) ──────────────────
+
+int32_t quartz_toggle_get_checked(int32_t widget_id) {
+    HWND hwnd = lookup_hwnd(widget_id);
+    if (hwnd) {
+        LRESULT state = SendMessageA(hwnd, BM_GETCHECK, 0, 0);
+        return (state == BST_CHECKED) ? 1 : 0;
+    }
+    return 0;
+}
+
+void quartz_toggle_set_checked(int32_t widget_id, int32_t checked) {
+    HWND hwnd = lookup_hwnd(widget_id);
+    if (!hwnd) return;
+
+    int32_t current = quartz_toggle_get_checked(widget_id);
+    if (current == checked) return; // no change, no event
+
+    SendMessageA(hwnd, BM_SETCHECK,
+                 checked ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    // BM_SETCHECK does not fire BN_CLICKED, so dispatch manually
+    CallbackEntry *e = find_toggle_callback(widget_id);
+    if (e && e->callback) {
+        e->callback(widget_id);
+    }
+}
+
+void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        set_toggle_callback(widget_id, callback);
     }
 }

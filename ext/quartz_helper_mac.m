@@ -62,6 +62,36 @@ static int32_t next_widget_id(void) {
 @end
 
 // ---------------------------------------------------------------------------
+// Target object for toggle (CheckBox / RadioButton) actions
+// — bridges to our toggle change callback map (offset +300000)
+// ---------------------------------------------------------------------------
+@interface ToggleTarget : NSObject
+@property (nonatomic, assign) int32_t widgetId;
+- (instancetype)initWithWidgetId:(int32_t)widgetId;
+- (void)toggleAction:(id)sender;
+@end
+
+@implementation ToggleTarget
+- (instancetype)initWithWidgetId:(int32_t)widgetId {
+    self = [super init];
+    if (self) {
+        _widgetId = widgetId;
+    }
+    return self;
+}
+
+- (void)toggleAction:(id)sender {
+    NSValue *val = callbackMap[@(self.widgetId + 300000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) {
+            cb(self.widgetId);
+        }
+    }
+}
+@end
+
+// ---------------------------------------------------------------------------
 // Delegate for NSTextField text-change notifications (TextBox)
 // ---------------------------------------------------------------------------
 @interface TextBoxDelegate : NSObject <NSTextFieldDelegate>
@@ -585,5 +615,93 @@ void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback cal
         callbackMap[@(widget_id + 200000)] = [NSValue valueWithPointer:(void *)callback];
     } else {
         [callbackMap removeObjectForKey:@(widget_id + 200000)];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CheckBox
+// ---------------------------------------------------------------------------
+int32_t quartz_checkbox_create(const char* text, int32_t x, int32_t y,
+                                int32_t width, int32_t height) {
+    int32_t wid = next_widget_id();
+
+    NSRect frame = NSMakeRect(x, y, width, height);
+    NSButton *button = [[NSButton alloc] initWithFrame:frame];
+
+    [button setTitle:[NSString stringWithUTF8String:text]];
+    [button setButtonType:NSButtonTypeSwitch];
+    [button setAutoresizingMask:NSViewNotSizable];
+
+    widgetMap[@(wid)] = button;
+    return wid;
+}
+
+// ---------------------------------------------------------------------------
+// RadioButton
+// ---------------------------------------------------------------------------
+int32_t quartz_radiobutton_create(const char* text, int32_t x, int32_t y,
+                                   int32_t width, int32_t height) {
+    int32_t wid = next_widget_id();
+
+    NSRect frame = NSMakeRect(x, y, width, height);
+    NSButton *button = [[NSButton alloc] initWithFrame:frame];
+
+    [button setTitle:[NSString stringWithUTF8String:text]];
+    [button setButtonType:NSButtonTypeRadio];
+    [button setAutoresizingMask:NSViewNotSizable];
+
+    widgetMap[@(wid)] = button;
+    return wid;
+}
+
+// ---------------------------------------------------------------------------
+// Toggle state (shared by CheckBox and RadioButton)
+// ---------------------------------------------------------------------------
+int32_t quartz_toggle_get_checked(int32_t widget_id) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSButton class]]) {
+        return [(NSButton *)obj state] == NSControlStateValueOn ? 1 : 0;
+    }
+    return 0;
+}
+
+void quartz_toggle_set_checked(int32_t widget_id, int32_t checked) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSButton class]]) {
+        NSButton *button = (NSButton *)obj;
+        NSControlStateValue newState = checked ? NSControlStateValueOn : NSControlStateValueOff;
+        if ([button state] != newState) {
+            [button setState:newState];
+            // AppKit does NOT fire the action when state is changed programmatically,
+            // so we must manually dispatch the callback.
+            NSValue *val = callbackMap[@(widget_id + 300000)];
+            if (val) {
+                QuartzCallback cb = (QuartzCallback)[val pointerValue];
+                if (cb) {
+                    cb(widget_id);
+                }
+            }
+        }
+    }
+}
+
+void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callback) {
+    id obj = widgetMap[@(widget_id)];
+
+    if (callback) {
+        callbackMap[@(widget_id + 300000)] = [NSValue valueWithPointer:(void *)callback];
+    } else {
+        [callbackMap removeObjectForKey:@(widget_id + 300000)];
+    }
+
+    if ([obj isKindOfClass:[NSButton class]]) {
+        NSButton *button = (NSButton *)obj;
+        ToggleTarget *target = [[ToggleTarget alloc] initWithWidgetId:widget_id];
+        [button setTarget:target];
+        [button setAction:@selector(toggleAction:)];
+
+        // Retain the target so it stays alive
+        objc_setAssociatedObject(button, (const void *)(uintptr_t)(widget_id + 300000), target,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }

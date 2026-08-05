@@ -79,7 +79,7 @@ describe Quartz::Window do
   describe "#add_control and #children" do
     it "sets the parent of the added control" do
       window = create_test_window
-      label  = WidgetFactory.label("child")
+      label = WidgetFactory.label("child")
 
       window.add_control(label)
       label.parent.should eq(window)

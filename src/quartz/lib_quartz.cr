@@ -84,4 +84,13 @@ lib LibQuartz
   fun quartz_listbox_get_item_count(widget_id : Int32) : Int32
   fun quartz_listbox_get_item_text(widget_id : Int32, index : Int32) : LibC::Char*
   fun quartz_listbox_set_selection_callback(widget_id : Int32, callback : QuartzCallback) : Void
+
+  # --- Toggle (CheckBox / RadioButton) ---
+  fun quartz_checkbox_create(text : LibC::Char*, x : Int32, y : Int32,
+                             width : Int32, height : Int32) : Int32
+  fun quartz_radiobutton_create(text : LibC::Char*, x : Int32, y : Int32,
+                                width : Int32, height : Int32) : Int32
+  fun quartz_toggle_get_checked(widget_id : Int32) : Int32
+  fun quartz_toggle_set_checked(widget_id : Int32, checked : Int32) : Void
+  fun quartz_toggle_set_change_callback(widget_id : Int32, callback : QuartzCallback) : Void
 end

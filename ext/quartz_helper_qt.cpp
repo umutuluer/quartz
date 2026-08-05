@@ -17,9 +17,12 @@
 #include <QApplication>
 #include <QWidget>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QRadioButton>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QAbstractButton>
 #include <QMap>
 #include <QAtomicInt>
 
@@ -45,6 +48,9 @@ static QMap<int32_t, QuartzCallback> *g_change_callbacks = nullptr;
 // Selection callback registry (for ListBox selection changes)
 static QMap<int32_t, QuartzCallback> *g_selection_callbacks = nullptr;
 
+// Toggle change callback registry (for CheckBox / RadioButton)
+static QMap<int32_t, QuartzCallback> *g_toggle_callbacks = nullptr;
+
 // Thread-safe ID counter
 static QAtomicInt g_next_id(1);
 
@@ -54,6 +60,7 @@ void ensure_init() {
         g_callbacks = new QMap<int32_t, QuartzCallback>();
         g_change_callbacks = new QMap<int32_t, QuartzCallback>();
         g_selection_callbacks = new QMap<int32_t, QuartzCallback>();
+        g_toggle_callbacks = new QMap<int32_t, QuartzCallback>();
     }
 }
 
@@ -258,6 +265,9 @@ void quartz_widget_set_text(int32_t widget_id, const char *text) {
 
     if (QPushButton *btn = qobject_cast<QPushButton*>(widget)) {
         btn->setText(qText);
+    } else if (QAbstractButton *abtn = qobject_cast<QAbstractButton*>(widget)) {
+        // CheckBox / RadioButton
+        abtn->setText(qText);
     } else if (QLabel *lbl = qobject_cast<QLabel*>(widget)) {
         lbl->setText(qText);
     } else if (QLineEdit *edit = qobject_cast<QLineEdit*>(widget)) {
@@ -400,6 +410,80 @@ void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback cal
         QObject::connect(list, &QListWidget::currentRowChanged, [widget_id](int /*row*/) {
             if (g_selection_callbacks->contains(widget_id)) {
                 QuartzCallback cb = g_selection_callbacks->value(widget_id);
+                if (cb) cb(widget_id);
+            }
+        });
+    }
+}
+
+// ── CheckBox ────────────────────────────────────────────────────────────
+
+int32_t quartz_checkbox_create(const char *text, int32_t x, int32_t y,
+                                int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QCheckBox *check = new QCheckBox(QString::fromUtf8(text));
+    check->setGeometry(x, y, width, height);
+
+    (*g_widgets)[wid] = check;
+    return wid;
+}
+
+// ── RadioButton ─────────────────────────────────────────────────────────
+
+int32_t quartz_radiobutton_create(const char *text, int32_t x, int32_t y,
+                                   int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QRadioButton *radio = new QRadioButton(QString::fromUtf8(text));
+    radio->setGeometry(x, y, width, height);
+    // QRadioButton is auto-exclusive within the same parent by default
+
+    (*g_widgets)[wid] = radio;
+    return wid;
+}
+
+// ── Toggle state (shared by CheckBox and RadioButton) ───────────────────
+
+int32_t quartz_toggle_get_checked(int32_t widget_id) {
+    if (!g_widgets->contains(widget_id)) return 0;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QAbstractButton *btn = qobject_cast<QAbstractButton*>(widget)) {
+        return btn->isChecked() ? 1 : 0;
+    }
+    return 0;
+}
+
+void quartz_toggle_set_checked(int32_t widget_id, int32_t checked) {
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QAbstractButton *btn = qobject_cast<QAbstractButton*>(widget)) {
+        bool newState = checked ? true : false;
+        if (btn->isChecked() != newState) {
+            btn->setChecked(newState);
+            // QAbstractButton::setChecked fires toggled(bool) automatically,
+            // which dispatches through the lambda callback below
+        }
+    }
+}
+
+void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        (*g_toggle_callbacks)[widget_id] = callback;
+    } else {
+        g_toggle_callbacks->remove(widget_id);
+    }
+
+    if (!g_widgets->contains(widget_id)) return;
+    QWidget *widget = g_widgets->value(widget_id);
+    if (QAbstractButton *btn = qobject_cast<QAbstractButton*>(widget)) {
+        // Disconnect previous toggled connections to avoid duplicates
+        QObject::disconnect(btn, &QAbstractButton::toggled, nullptr, nullptr);
+        QObject::connect(btn, &QAbstractButton::toggled, [widget_id](bool) {
+            if (g_toggle_callbacks->contains(widget_id)) {
+                QuartzCallback cb = g_toggle_callbacks->value(widget_id);
                 if (cb) cb(widget_id);
             }
         });

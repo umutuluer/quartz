@@ -39,6 +39,12 @@ static GHashTable *change_callback_map = NULL;
 // Selection callback registry (for ListBox selection changes)
 static GHashTable *selection_callback_map = NULL;
 
+// Toggle change callback registry (for CheckBox / RadioButton checked changes)
+static GHashTable *toggle_callback_map = NULL;
+
+// Radio group tracking: parent container → first GSList* radio group
+static GHashTable *radio_group_map = NULL;
+
 // ── Widget ID counter ──────────────────────────────────────────────────
 
 static atomic_int next_id = 1;
@@ -57,6 +63,8 @@ static void ensure_init(void) {
         callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         change_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         selection_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        toggle_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        radio_group_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     }
 }
 
@@ -65,6 +73,15 @@ static void ensure_init(void) {
 static void on_button_clicked(GtkWidget *widget, gpointer user_data) {
     int32_t wid = GPOINTER_TO_INT(user_data);
     QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(callback_map,
+                                                            GINT_TO_POINTER(wid));
+    if (cb) {
+        cb(wid);
+    }
+}
+
+static void on_toggle_changed(GtkToggleButton *toggle, gpointer user_data) {
+    int32_t wid = GPOINTER_TO_INT(user_data);
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(toggle_callback_map,
                                                             GINT_TO_POINTER(wid));
     if (cb) {
         cb(wid);
@@ -301,6 +318,21 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
         gtk_fixed_put(GTK_FIXED(container), child, cx, cy);
         gtk_widget_show(child);
     }
+
+    // ── Radio group management ──────────────────────────────────────
+    // If the child is a GTK radio button, join the parent's radio group.
+    if (GTK_IS_RADIO_BUTTON(child) && container) {
+        GSList *group = (GSList *)g_hash_table_lookup(radio_group_map,
+                                                       container);
+        if (group) {
+            gtk_radio_button_join_group(GTK_RADIO_BUTTON(child),
+                                        GTK_RADIO_BUTTON(group->data));
+        } else {
+            // This radio becomes the group leader
+            GSList *new_group = gtk_radio_button_get_group(GTK_RADIO_BUTTON(child));
+            g_hash_table_insert(radio_group_map, container, new_group);
+        }
+    }
 }
 
 // ── Widget properties ──────────────────────────────────────────────────
@@ -527,6 +559,90 @@ void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback cal
         GtkTreeSelection *selection = gtk_tree_view_get_selection(treeView);
         g_signal_connect(selection, "changed",
                          G_CALLBACK(on_listbox_selection_changed),
+                         GINT_TO_POINTER(widget_id));
+    }
+}
+
+// ── CheckBox ────────────────────────────────────────────────────────────
+
+int32_t quartz_checkbox_create(const char *text, int32_t x, int32_t y,
+                                int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    GtkWidget *check = gtk_check_button_new_with_label(text);
+    gtk_widget_set_size_request(check, width, height);
+
+    g_hash_table_insert(widget_map, GINT_TO_POINTER(wid), check);
+
+    // Store position
+    WidgetPos *pos = malloc(sizeof(WidgetPos));
+    pos->x = x;
+    pos->y = y;
+    g_hash_table_insert(position_map, GINT_TO_POINTER(wid), pos);
+
+    return wid;
+}
+
+// ── RadioButton ─────────────────────────────────────────────────────────
+
+int32_t quartz_radiobutton_create(const char *text, int32_t x, int32_t y,
+                                   int32_t width, int32_t height) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    // Create radio button without a group — group is assigned in set_parent
+    GtkWidget *radio = gtk_radio_button_new_with_label(NULL, text);
+    gtk_widget_set_size_request(radio, width, height);
+
+    g_hash_table_insert(widget_map, GINT_TO_POINTER(wid), radio);
+
+    // Store position
+    WidgetPos *pos = malloc(sizeof(WidgetPos));
+    pos->x = x;
+    pos->y = y;
+    g_hash_table_insert(position_map, GINT_TO_POINTER(wid), pos);
+
+    return wid;
+}
+
+// ── Toggle state (shared by CheckBox and RadioButton) ───────────────────
+
+int32_t quartz_toggle_get_checked(int32_t widget_id) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (widget && GTK_IS_TOGGLE_BUTTON(widget)) {
+        return gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)) ? 1 : 0;
+    }
+    return 0;
+}
+
+void quartz_toggle_set_checked(int32_t widget_id, int32_t checked) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (!widget || !GTK_IS_TOGGLE_BUTTON(widget)) return;
+
+    gboolean new_state = checked ? TRUE : FALSE;
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)) != new_state) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(widget), new_state);
+        // gtk_toggle_button_set_active fires "toggled" automatically,
+        // which dispatches through on_toggle_changed → callback
+    }
+}
+
+void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callback) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (callback) {
+        g_hash_table_insert(toggle_callback_map, GINT_TO_POINTER(widget_id),
+                            (gpointer)callback);
+    } else {
+        g_hash_table_remove(toggle_callback_map, GINT_TO_POINTER(widget_id));
+    }
+
+    if (widget && GTK_IS_TOGGLE_BUTTON(widget)) {
+        g_signal_connect(widget, "toggled",
+                         G_CALLBACK(on_toggle_changed),
                          GINT_TO_POINTER(widget_id));
     }
 }
