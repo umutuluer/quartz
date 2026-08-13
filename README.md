@@ -178,6 +178,23 @@ shards build
 | `combo.on_selection_changed { }`               | Registers selection change            |
 | `combo.on_text_changed { }`                    | Registers edit-text change            |
 
+### FileDialog
+
+Abstract base for file dialogs. Concrete classes: `OpenFileDialog`, `SaveFileDialog`.
+
+| Method                                | Description                          |
+| ------------------------------------- | ------------------------------------ |
+| `dialog.title`                        | Dialog window title                  |
+| `dialog.filter`                       | WinForms-style filter (`"Text (*.txt)\|*.txt\|All (*.*)\|*.*"`) |
+| `dialog.initial_directory`            | Starting directory                   |
+| `dialog.file_name`                    | Initial file name (SaveFileDialog)   |
+| `dialog.default_ext`                  | Default extension                    |
+| `dialog.show_dialog(owner : Window?)` | Blocking modal; returns `String?` (nil = cancel) |
+
+`OpenFileDialog` additionally has `multiselect : Bool`. `SaveFileDialog` additionally has `overwrite_prompt : Bool` (default true).
+
+> Multiselect MVP: only the first selected file is returned. Full `Array(String)?` API coming later.
+
 ### CheckBox
 
 | Method                                             | Description                       |
@@ -235,6 +252,24 @@ crystal build examples/listbox_example.cr -o bin/listbox_example
 
 Example source: [`examples/listbox_example.cr`](examples/listbox_example.cr)
 
+Run the OpenFileDialog demo:
+
+```bash
+crystal build examples/openfiledialog_example.cr -o bin/openfiledialog_example
+./bin/openfiledialog_example
+```
+
+Example source: [`examples/openfiledialog_example.cr`](examples/openfiledialog_example.cr)
+
+Run the SaveFileDialog demo:
+
+```bash
+crystal build examples/savefiledialog_example.cr -o bin/savefiledialog_example
+./bin/savefiledialog_example
+```
+
+Example source: [`examples/savefiledialog_example.cr`](examples/savefiledialog_example.cr)
+
 Run the ComboBox demo:
 
 ```bash
@@ -271,7 +306,7 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 │            Crystal (src/)                 │
 │  Application · Window · Button · Label    │
 │       TextBox · ListBox · ComboBox          │
-│       CheckBox · RadioButton               │
+│       CheckBox · FileDialog · RadioButton  │
 │                  │                        │
 │            lib_quartz.cr                  │
 │          (C bindings via @[Link])         │
@@ -298,7 +333,7 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 - [x] ListBox
 - [x] CheckBox, RadioButton
 - [x] ComboBox / DropDown
-- [ ] File dialogs
+- [x] File dialogs
 - [ ] Layout managers (Flow, Grid, Stack)
 - [ ] Menu bar & context menus
 - [ ] Comprehensive test suite

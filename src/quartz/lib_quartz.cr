@@ -30,7 +30,7 @@
     @[Link(ldflags: "`make -C #{__DIR__}/../.. BACKEND=qt all >/dev/null 2>&1; pkg-config --libs Qt6Widgets 2>/dev/null` #{__DIR__}/../../ext/quartz_helper_qt.o -lstdc++")]
   {% end %}
 {% elsif flag?(:win32) %}
-  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper_win.o -lgdi32 -luser32 -lcomctl32")]
+  @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper_win.o -lgdi32 -luser32 -lcomctl32 -lcomdlg32")]
 {% else %}
   @[Link(ldflags: "#{__DIR__}/../../ext/quartz_helper.o")]
 {% end %}
@@ -101,6 +101,21 @@ lib LibQuartz
   fun quartz_combobox_set_dropped_down(wid : Int32, dropped : Int32) : Void
   fun quartz_combobox_set_selection_callback(wid : Int32, cb : QuartzCallback) : Void
   fun quartz_combobox_set_text_callback(wid : Int32, cb : QuartzCallback) : Void
+
+  # --- File dialogs ---
+  fun quartz_open_file_dialog(title : LibC::Char*,
+                              filter : LibC::Char*,
+                              initial_directory : LibC::Char*,
+                              default_ext : LibC::Char*,
+                              multiselect : Int32,
+                              owner_widget_id : Int32) : LibC::Char*
+  fun quartz_save_file_dialog(title : LibC::Char*,
+                              filter : LibC::Char*,
+                              initial_directory : LibC::Char*,
+                              default_ext : LibC::Char*,
+                              file_name : LibC::Char*,
+                              overwrite_prompt : Int32,
+                              owner_widget_id : Int32) : LibC::Char*
 
   # --- Toggle (CheckBox / RadioButton) ---
   fun quartz_checkbox_create(text : LibC::Char*, x : Int32, y : Int32,

@@ -99,6 +99,8 @@ BIN_LB = bin/listbox_example
 BIN_COMBO = bin/combobox_example
 BIN_CB = bin/checkbox_example
 BIN_RB = bin/radiobutton_example
+BIN_OFD = bin/openfiledialog_example
+BIN_SFD = bin/savefiledialog_example
 
 # ═══════════════════════════════════════════════════════════════════════
 # Targets
@@ -139,6 +141,8 @@ examples: $(OBJ)  ## Build all example applications
 	crystal build $(CRYSTAL_FLAGS) examples/checkbox_example.cr -o $(BIN_CB) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/radiobutton_example.cr -o $(BIN_RB) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/combobox_example.cr -o $(BIN_COMBO) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/openfiledialog_example.cr -o $(BIN_OFD) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/savefiledialog_example.cr -o $(BIN_SFD) --link-flags="$(LDFLAGS)"
 
 spec: $(OBJ)  ## Run the crystal spec test suite
 	crystal spec $(CRYSTAL_FLAGS) --link-flags="$(LDFLAGS)"

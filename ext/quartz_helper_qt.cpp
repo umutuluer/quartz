@@ -15,6 +15,7 @@
 #include "quartz_helper.h"
 
 #include <QApplication>
+#include <QFileDialog>
 #include <QWidget>
 #include <QPushButton>
 #include <QCheckBox>
@@ -74,6 +75,29 @@ void ensure_init() {
 // Children are added directly to the window widget.
 QWidget* container_of(QWidget *widget) {
     return widget; // Qt: windows ARE containers
+}
+
+// Helper: resolve an owner widget from its registry id
+QWidget* findOwnerWidget(int32_t owner_widget_id) {
+    if (owner_widget_id < 0) return nullptr;
+    if (!g_widgets) return nullptr;
+    auto it = g_widgets->find(owner_widget_id);
+    if (it == g_widgets->end()) return nullptr;
+    return it.value();
+}
+
+// Helper: convert WinForms "display|pattern|..." filter to Qt ";;" format
+QString convertFilter(const char* quartz_filter) {
+    if (!quartz_filter || !*quartz_filter) return QString();
+    QString src = QString::fromUtf8(quartz_filter);
+    QStringList parts = src.split('|');
+    QString result;
+    // Pairs: display[0], pattern[1], display[2], pattern[3], ...
+    for (int i = 0; i + 1 < parts.size(); i += 2) {
+        if (i > 0) result += ";;";
+        result += parts[i] + "(" + parts[i+1] + ")";
+    }
+    return result;
 }
 
 } // anonymous namespace
@@ -644,6 +668,64 @@ void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callbac
             }
         });
     }
+}
+
+// ── File dialogs ──────────────────────────────────────────────────────
+
+const char* quartz_open_file_dialog(const char* title, const char* filter,
+                                    const char* initial_directory, const char* default_ext,
+                                    int32_t multiselect, int32_t owner_widget_id) {
+    static QByteArray buffer;
+    buffer.clear();
+
+    QWidget *owner = findOwnerWidget(owner_widget_id);
+    QString qtFilter = convertFilter(filter);
+    QString dir = initial_directory ? QString::fromUtf8(initial_directory) : QString();
+    QString selectedFilter;
+    QStringList files;
+
+    if (multiselect) {
+        files = QFileDialog::getOpenFileNames(owner,
+            title ? QString::fromUtf8(title) : QString(),
+            dir, qtFilter, &selectedFilter);
+    } else {
+        QString file = QFileDialog::getOpenFileName(owner,
+            title ? QString::fromUtf8(title) : QString(),
+            dir, qtFilter, &selectedFilter);
+        if (!file.isEmpty()) files << file;
+    }
+
+    if (files.isEmpty()) return nullptr;
+    buffer = files.first().toUtf8();
+    (void)default_ext;  // Qt filter pattern'den gelir
+    return buffer.constData();
+}
+
+const char* quartz_save_file_dialog(const char* title, const char* filter,
+                                    const char* initial_directory, const char* default_ext,
+                                    const char* file_name, int32_t overwrite_prompt,
+                                    int32_t owner_widget_id) {
+    static QByteArray buffer;
+    buffer.clear();
+
+    QWidget *owner = findOwnerWidget(owner_widget_id);
+    QString qtFilter = convertFilter(filter);
+    QString dir = initial_directory ? QString::fromUtf8(initial_directory) : QString();
+    QString selectedFilter;
+    QFileDialog::Options options = QFileDialog::DontConfirmOverwrite;
+    if (overwrite_prompt) {
+        options = 0;  // default = confirm
+    }
+
+    QString file = QFileDialog::getSaveFileName(owner,
+        title ? QString::fromUtf8(title) : QString(),
+        dir, qtFilter, &selectedFilter, options);
+
+    if (file.isEmpty()) return nullptr;
+    buffer = file.toUtf8();
+    (void)file_name;  // Qt, dir parametresinden path'i alır; dosya adı için ek API yok
+    (void)default_ext;  // Qt filter pattern'den gelir
+    return buffer.constData();
 }
 
 } // extern "C"

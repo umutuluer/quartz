@@ -81,6 +81,23 @@ void    quartz_combobox_set_dropped_down(int32_t wid, int32_t dropped);
 void    quartz_combobox_set_selection_callback(int32_t wid, QuartzCallback cb);
 void    quartz_combobox_set_text_callback(int32_t wid, QuartzCallback cb);
 
+// --- File dialogs ---
+// Blocking synchronous dialogs. owner_widget_id is the widget whose native
+// window owns the dialog, or -1 for no owner.
+const char* quartz_open_file_dialog(const char* title,
+                                    const char* filter,
+                                    const char* initial_directory,
+                                    const char* default_ext,
+                                    int32_t       multiselect,
+                                    int32_t       owner_widget_id);
+const char* quartz_save_file_dialog(const char* title,
+                                    const char* filter,
+                                    const char* initial_directory,
+                                    const char* default_ext,
+                                    const char* file_name,
+                                    int32_t       overwrite_prompt,
+                                    int32_t       owner_widget_id);
+
 // --- Toggle (CheckBox / RadioButton) ---
 int32_t quartz_checkbox_create(const char* text, int32_t x, int32_t y,
                                 int32_t width, int32_t height);

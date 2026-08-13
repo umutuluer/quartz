@@ -18,6 +18,8 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commdlg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -901,4 +903,130 @@ void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callbac
     if (callback) {
         set_toggle_callback(widget_id, callback);
     }
+}
+
+// ── File dialogs ───────────────────────────────────────────────────────
+
+static char g_filter_buffer[2048];
+
+static void build_filter_buffer(const char* quartz_filter) {
+    g_filter_buffer[0] = '\0';
+    if (!quartz_filter || !*quartz_filter) return;
+    int qi = 0, bi = 0;
+    while (quartz_filter[qi] && bi + 2 < (int)sizeof(g_filter_buffer)) {
+        char c = quartz_filter[qi++];
+        if (c == '|') {
+            g_filter_buffer[bi++] = '\0';
+        } else {
+            g_filter_buffer[bi++] = c;
+        }
+    }
+    g_filter_buffer[bi++] = '\0';
+    g_filter_buffer[bi++] = '\0';  // double-null terminator
+}
+
+const char* quartz_open_file_dialog(const char* title, const char* filter,
+                                    const char* initial_directory, const char* default_ext,
+                                    int32_t multiselect, int32_t owner_widget_id) {
+    static char buffer[4096];
+    static char szFile[4096];
+    buffer[0] = '\0';
+    szFile[0] = '\0';
+    (void)title;
+
+    if (filter && *filter) {
+        build_filter_buffer(filter);
+    }
+
+    OPENFILENAMEA ofn;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = (owner_widget_id >= 0) ? lookup_hwnd(owner_widget_id) : NULL;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = (filter && *filter) ? g_filter_buffer : NULL;
+    ofn.nFilterIndex = 1;
+    if (initial_directory && *initial_directory) {
+        ofn.lpstrInitialDir = initial_directory;
+    }
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_EXPLORER;
+    if (multiselect) {
+        ofn.Flags |= OFN_ALLOWMULTISELECT;
+        // Multiselect: ilk dosyayı buffer'a yaz; tam dizi 2. aşamada (show_multi)
+        // MVP: ilk seçili dosyayı dönmek yeterli.
+    }
+
+    BOOL ok = GetOpenFileNameA(&ofn);
+    if (!ok) {
+        return NULL;
+    }
+
+    // Multiselect: ilk satır dizin, sonraki satırlar dosya adları; ilk dosyayı al
+    if (multiselect) {
+        // szFile: "C:\\path\\dir\0file1.ext\0file2.ext\0\0"
+        const char* first = szFile;
+        if (first && *first) {
+            // Dizin + ilk dosya birleştir
+            const char* file1 = first + strlen(first) + 1;
+            if (file1 && *file1) {
+                snprintf(buffer, sizeof(buffer), "%s\\%s", first, file1);
+            } else {
+                snprintf(buffer, sizeof(buffer), "%s", first);
+            }
+        }
+    } else {
+        snprintf(buffer, sizeof(buffer), "%s", szFile);
+    }
+
+    // Default ext: commdlg otomatik ekler (lpstrDefExt), ek iş gerekmiyor
+    (void)default_ext;
+
+    return buffer;
+}
+
+const char* quartz_save_file_dialog(const char* title, const char* filter,
+                                    const char* initial_directory, const char* default_ext,
+                                    const char* file_name, int32_t overwrite_prompt,
+                                    int32_t owner_widget_id) {
+    static char buffer[4096];
+    static char szFile[4096];
+    buffer[0] = '\0';
+    (void)title;
+
+    if (file_name && *file_name) {
+        snprintf(szFile, sizeof(szFile), "%s", file_name);
+    } else {
+        szFile[0] = '\0';
+    }
+
+    if (filter && *filter) {
+        build_filter_buffer(filter);
+    }
+
+    OPENFILENAMEA ofn;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = (owner_widget_id >= 0) ? lookup_hwnd(owner_widget_id) : NULL;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = (filter && *filter) ? g_filter_buffer : NULL;
+    ofn.nFilterIndex = 1;
+    if (initial_directory && *initial_directory) {
+        ofn.lpstrInitialDir = initial_directory;
+    }
+    if (default_ext && *default_ext) {
+        ofn.lpstrDefExt = default_ext;
+    }
+    ofn.Flags = OFN_EXPLORER;
+    if (overwrite_prompt) {
+        ofn.Flags |= OFN_OVERWRITEPROMPT;
+    }
+
+    BOOL ok = GetSaveFileNameA(&ofn);
+    if (!ok) {
+        return NULL;
+    }
+
+    snprintf(buffer, sizeof(buffer), "%s", szFile);
+    return buffer;
 }

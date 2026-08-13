@@ -2,6 +2,7 @@
 #import <Cocoa/Cocoa.h>
 #import <objc/runtime.h>
 #import <stdatomic.h>
+#import <stdio.h>
 
 // ---------------------------------------------------------------------------
 // Internal widget map: widget_id -> NSObject* (NSWindow or NSView)
@@ -791,6 +792,126 @@ void quartz_combobox_set_text_callback(int32_t wid, QuartzCallback cb) {
     } else {
         [callbackMap removeObjectForKey:@(wid + 500000)];
     }
+}
+
+// ---------------------------------------------------------------------------
+// File dialogs
+// ---------------------------------------------------------------------------
+static NSArray<NSString*>* parseExtensionsFromFilter(const char* filter) {
+    if (!filter || !*filter) return @[];
+
+    NSString *str = [NSString stringWithUTF8String:filter];
+    NSArray<NSString*> *parts = [str componentsSeparatedByString:@"|"];
+    if (parts.count < 2) return @[];
+
+    NSMutableArray<NSString*> *exts = [NSMutableArray array];
+    // Çiftleri atla: display[0], pattern[1], display[2], pattern[3], ...
+    for (NSUInteger i = 1; i < parts.count; i += 2) {
+        NSString *pattern = parts[i];
+        // Basit: "*" veya "*.*" ise boş array dön (tüm dosyalar)
+        if ([pattern isEqualToString:@"*"] || [pattern isEqualToString:@"*.*"]) {
+            return @[];
+        }
+        // "*.txt" → "txt"
+        if ([pattern hasPrefix:@"*."]) {
+            [exts addObject:[pattern substringFromIndex:2]];
+        } else if ([pattern hasPrefix:@"."]) {
+            [exts addObject:[pattern substringFromIndex:1]];
+        } else {
+            [exts addObject:pattern];
+        }
+    }
+    return [exts copy];
+}
+
+static NSWindow* findOwnerWindow(int32_t owner_widget_id) {
+    if (owner_widget_id < 0) return nil;
+    id obj = widgetMap[@(owner_widget_id)];
+    if ([obj isKindOfClass:[NSWindow class]]) return (NSWindow *)obj;
+    // NSView ise: parent window'u bul
+    if ([obj isKindOfClass:[NSView class]]) return [(NSView *)obj window];
+    return nil;
+}
+
+const char* quartz_open_file_dialog(const char* title, const char* filter,
+                                    const char* initial_directory, const char* default_ext,
+                                    int32_t multiselect, int32_t owner_widget_id) {
+    static char buffer[4096];
+    buffer[0] = '\0';
+
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    panel.allowsMultipleSelection = (multiselect != 0);
+
+    if (title && *title) {
+        // NSOpenPanel'da "title" için message kullanılır
+        panel.message = [NSString stringWithUTF8String:title];
+    }
+    if (initial_directory && *initial_directory) {
+        panel.directoryURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:initial_directory]];
+    }
+    NSArray<NSString*> *exts = parseExtensionsFromFilter(filter);
+    if (exts.count > 0) {
+        panel.allowedFileTypes = exts;
+    }
+
+    // Blocking modal; owner şimdilik ileride sheet kullanımı için saklanır
+    NSWindow *owner = findOwnerWindow(owner_widget_id);
+    (void)owner;
+    NSModalResponse resp = [panel runModal];
+
+    if (resp != NSModalResponseOK) return NULL;
+
+    NSArray<NSURL*> *urls = panel.URLs;
+    if (urls.count == 0) return NULL;
+
+    // Multiselect MVP: ilk dosyayı dön (Win32 ile aynı sınırlama)
+    NSString *path = [urls[0] path];
+    snprintf(buffer, sizeof(buffer), "%s", [path UTF8String]);
+
+    // default_ext: allowedFileTypes üzerinden zaten uygulandı
+    (void)default_ext;
+
+    return buffer;
+}
+
+const char* quartz_save_file_dialog(const char* title, const char* filter,
+                                    const char* initial_directory, const char* default_ext,
+                                    const char* file_name, int32_t overwrite_prompt,
+                                    int32_t owner_widget_id) {
+    static char buffer[4096];
+    buffer[0] = '\0';
+
+    NSSavePanel *panel = [NSSavePanel savePanel];
+
+    if (title && *title) {
+        panel.message = [NSString stringWithUTF8String:title];
+    }
+    if (initial_directory && *initial_directory) {
+        panel.directoryURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:initial_directory]];
+    }
+    if (file_name && *file_name) {
+        panel.nameFieldStringValue = [NSString stringWithUTF8String:file_name];
+    }
+    if (default_ext && *default_ext) {
+        panel.allowedFileTypes = @[[NSString stringWithUTF8String:default_ext]];
+    }
+    // overwrite_prompt: NSSavePanel zaten dosya üzerine yazmayı doğruluyor
+    (void)overwrite_prompt;
+
+    // Blocking modal; owner şimdilik ileride sheet kullanımı için saklanır
+    NSWindow *owner = findOwnerWindow(owner_widget_id);
+    (void)owner;
+    NSModalResponse resp = [panel runModal];
+
+    if (resp != NSModalResponseOK) return NULL;
+
+    NSURL *url = panel.URL;
+    if (!url) return NULL;
+
+    snprintf(buffer, sizeof(buffer), "%s", [[url path] UTF8String]);
+    return buffer;
 }
 
 // ---------------------------------------------------------------------------

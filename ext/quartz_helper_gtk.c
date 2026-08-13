@@ -852,3 +852,165 @@ void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callbac
                          GINT_TO_POINTER(widget_id));
     }
 }
+
+// ── File dialogs ────────────────────────────────────────────────────────
+
+// Parse a WinForms-style filter string ("Display (*.ext)|*.ext|...") into a
+// GList of GtkFileFilter*. Each display+pattern pair becomes one filter.
+static GList* build_filters_from_string(const char* filter_str) {
+    GList *list = NULL;
+    if (!filter_str || !*filter_str) return NULL;
+    char *copy = g_strdup(filter_str);
+    char *saveptr1 = NULL;
+    char *token = strtok_r(copy, "|", &saveptr1);
+    char *current_display = NULL;
+    while (token) {
+        if (!current_display) {
+            current_display = token;
+        } else {
+            GtkFileFilter *gf = gtk_file_filter_new();
+            gtk_file_filter_set_name(gf, current_display);
+            gtk_file_filter_add_pattern(gf, token);
+            list = g_list_append(list, gf);
+            current_display = NULL;
+        }
+        token = strtok_r(NULL, "|", &saveptr1);
+    }
+    g_free(copy);
+    return list;
+}
+
+// Resolve a widget_id to the GtkWindow that owns it (itself if a window,
+// otherwise its toplevel). Returns NULL for -1 or unknown ids.
+static GtkWindow* find_owner_window(int32_t owner_widget_id) {
+    if (owner_widget_id < 0) return NULL;
+    GtkWidget *w = (GtkWidget*)g_hash_table_lookup(widget_map,
+                                                   GINT_TO_POINTER(owner_widget_id));
+    if (!w) return NULL;
+    if (GTK_IS_WINDOW(w)) return GTK_WINDOW(w);
+    if (GTK_IS_WIDGET(w)) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(w);
+        if (toplevel && GTK_IS_WINDOW(toplevel)) return GTK_WINDOW(toplevel);
+    }
+    return NULL;
+}
+
+const char* quartz_open_file_dialog(const char* title, const char* filter_str,
+                                    const char* initial_directory, const char* default_ext,
+                                    int32_t multiselect, int32_t owner_widget_id) {
+    static char buffer[4096];
+    buffer[0] = '\0';
+
+    GtkWindow *owner = find_owner_window(owner_widget_id);
+
+    const char *btn_open = multiselect ? "Select" : "Open";
+    GtkWidget *dialog = gtk_file_chooser_dialog_new(
+        title && *title ? title : "Open File",
+        owner,
+        GTK_FILE_CHOOSER_ACTION_OPEN,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        btn_open, GTK_RESPONSE_ACCEPT,
+        NULL
+    );
+
+    if (initial_directory && *initial_directory) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), initial_directory);
+    }
+
+    GList *filters = build_filters_from_string(filter_str);
+    for (GList *l = filters; l != NULL; l = l->next) {
+        gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), GTK_FILE_FILTER(l->data));
+    }
+    if (filters) {
+        gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), GTK_FILE_FILTER(filters->data));
+    }
+
+    if (multiselect) {
+        gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(dialog), TRUE);
+    }
+
+    (void)default_ext;  // GTK file filter pattern'lerinden gelir
+
+    gint resp = gtk_dialog_run(GTK_DIALOG(dialog));
+
+    const char *result = NULL;
+    if (resp == GTK_RESPONSE_ACCEPT) {
+        if (multiselect) {
+            GSList *files = gtk_file_chooser_get_filenames(GTK_FILE_CHOOSER(dialog));
+            if (files) {
+                // MVP: ilk dosya
+                snprintf(buffer, sizeof(buffer), "%s", (const char*)files->data);
+                g_slist_free_full(files, g_free);
+            }
+        } else {
+            char *file = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            if (file) {
+                snprintf(buffer, sizeof(buffer), "%s", file);
+                g_free(file);
+            }
+        }
+        result = buffer;
+    }
+
+    g_list_free_full(filters, g_object_unref);
+    gtk_widget_destroy(dialog);
+
+    return result;  // NULL = cancel
+}
+
+const char* quartz_save_file_dialog(const char* title, const char* filter_str,
+                                    const char* initial_directory, const char* default_ext,
+                                    const char* file_name, int32_t overwrite_prompt,
+                                    int32_t owner_widget_id) {
+    static char buffer[4096];
+    buffer[0] = '\0';
+
+    GtkWindow *owner = find_owner_window(owner_widget_id);
+
+    GtkWidget *dialog = gtk_file_chooser_dialog_new(
+        title && *title ? title : "Save File",
+        owner,
+        GTK_FILE_CHOOSER_ACTION_SAVE,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Save", GTK_RESPONSE_ACCEPT,
+        NULL
+    );
+
+    if (initial_directory && *initial_directory) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), initial_directory);
+    }
+    if (file_name && *file_name) {
+        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), file_name);
+    }
+    if (default_ext && *default_ext) {
+        gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), (overwrite_prompt != 0));
+    }
+    // Default ext: GTK'da gtk_file_chooser_set_current_folder + filter'dan gelir, explicit extension
+    // ayarlamak için ayrı API yoktur; filter pattern'ine güveniyoruz
+    (void)default_ext;
+
+    GList *filters = build_filters_from_string(filter_str);
+    for (GList *l = filters; l != NULL; l = l->next) {
+        gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), GTK_FILE_FILTER(l->data));
+    }
+    if (filters) {
+        gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dialog), GTK_FILE_FILTER(filters->data));
+    }
+
+    gint resp = gtk_dialog_run(GTK_DIALOG(dialog));
+
+    const char *result = NULL;
+    if (resp == GTK_RESPONSE_ACCEPT) {
+        char *file = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        if (file) {
+            snprintf(buffer, sizeof(buffer), "%s", file);
+            g_free(file);
+        }
+        result = buffer;
+    }
+
+    g_list_free_full(filters, g_object_unref);
+    gtk_widget_destroy(dialog);
+
+    return result;
+}
