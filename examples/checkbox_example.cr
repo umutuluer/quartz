@@ -12,7 +12,7 @@ Quartz::Application.run do |app|
   status_label = Quartz::Label.new("Hiçbir stil seçili değil", 20, 150, 400, 25)
 
   # --- Event handler — updates the status when any checkbox changes ---
-  update_status = ->{
+  update_status = -> {
     styles = [] of String
     styles << "Kalın" if bold_check.checked
     styles << "İtalik" if italic_check.checked

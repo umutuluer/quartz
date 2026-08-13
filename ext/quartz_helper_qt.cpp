@@ -284,6 +284,15 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
     child->show();
 }
 
+void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
+                              int32_t width, int32_t height) {
+    auto it = g_widgets->find(widget_id);
+    if (it == g_widgets->end()) return;
+    QWidget *widget = it.value();
+    if (!widget) return;
+    widget->setGeometry(x, y, width, height);
+}
+
 // ── Widget properties ─────────────────────────────────────────────────
 
 void quartz_widget_set_text(int32_t widget_id, const char *text) {

@@ -39,6 +39,14 @@ int32_t quartz_textbox_create(const char* text, int32_t x, int32_t y,
 // --- Widget hierarchy ---
 void quartz_widget_set_parent(int32_t child_id, int32_t parent_id);
 
+// --- Widget geometry ---
+// Runtime positioning (used by layout managers to reposition children
+// after the initial *create call). Coordinates are absolute, in pixels,
+// relative to the parent window's content area.
+void quartz_widget_set_bounds(int32_t widget_id,
+                              int32_t x, int32_t y,
+                              int32_t width, int32_t height);
+
 // --- Widget properties ---
 void quartz_widget_set_text(int32_t widget_id, const char* text);
 void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback);

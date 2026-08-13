@@ -14,7 +14,7 @@ Quartz::Application.run do |app|
   selection_label = Quartz::Label.new("Seçili: macOS", 20, 180, 400, 25)
 
   # --- Event handlers — update the label when any radio changes ---
-  on_platform_change = ->{
+  on_platform_change = -> {
     selected = if mac_radio.checked
                  "macOS"
                elsif linux_radio.checked

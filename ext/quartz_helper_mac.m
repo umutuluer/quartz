@@ -471,6 +471,16 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
 }
 
 // ---------------------------------------------------------------------------
+// Widget geometry
+// ---------------------------------------------------------------------------
+void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
+                              int32_t width, int32_t height) {
+    id view = widgetMap[@(widget_id)];
+    if (!view || ![view isKindOfClass:[NSView class]]) return;
+    [(NSView *)view setFrame:NSMakeRect(x, y, width, height)];
+}
+
+// ---------------------------------------------------------------------------
 // Widget properties
 // ---------------------------------------------------------------------------
 void quartz_widget_set_text(int32_t widget_id, const char* text) {

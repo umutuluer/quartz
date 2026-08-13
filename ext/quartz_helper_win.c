@@ -551,6 +551,19 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
     SetParent(child, parent);
 }
 
+// Runtime positioning (used by layout managers to reposition children
+// after the initial *create call). Coordinates are absolute, in pixels,
+// relative to the parent window's content area.
+void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
+                              int32_t width, int32_t height) {
+    HWND hwnd = find_hwnd(widget_id);
+    if (!hwnd) return;
+
+    // MoveWindow ignores x/y for top-level windows (uses screen coords);
+    // for child windows (WS_CHILD) it's relative to parent client area.
+    MoveWindow(hwnd, x, y, width, height, TRUE);
+}
+
 // ── Widget properties ──────────────────────────────────────────────────
 
 void quartz_widget_set_text(int32_t widget_id, const char *text) {

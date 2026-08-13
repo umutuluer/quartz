@@ -357,6 +357,27 @@ void quartz_widget_set_parent(int32_t child_id, int32_t parent_id) {
     }
 }
 
+// ── Widget geometry ────────────────────────────────────────────────────
+
+void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
+                              int32_t width, int32_t height) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (!widget) return;
+
+    // Plan B: tüm parent'lar GtkFixed (mevcut kalıp).
+    // Container'ı widget map'ten değil, gtk_widget_get_parent ile bul —
+    // x/y konumu yalnızca gerçek parent üzerinde değiştirilebilir.
+    GtkWidget *parent = gtk_widget_get_parent(widget);
+    if (parent && GTK_IS_FIXED(parent)) {
+        gtk_fixed_move(GTK_FIXED(parent), widget, x, y);
+        gtk_widget_set_size_request(widget, width, height);
+    } else {
+        // Container bulunamadı veya GtkFixed değil — size request yine de uygula
+        gtk_widget_set_size_request(widget, width, height);
+    }
+}
+
 // ── Widget properties ──────────────────────────────────────────────────
 
 void quartz_widget_set_text(int32_t widget_id, const char *text) {

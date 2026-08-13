@@ -195,6 +195,25 @@ Abstract base for file dialogs. Concrete classes: `OpenFileDialog`, `SaveFileDia
 
 > Multiselect MVP: only the first selected file is returned. Full `Array(String)?` API coming later.
 
+### StackLayout
+
+Linear layout: vertical ya da horizontal stack. Saf Crystal sınıfıdır (Control'den türemez); çocukları
+`add(control, width, height)` ile ölçüleriyle birlikte ekler, `relayout` ile yeniden konumlandırır.
+
+| Method | Description |
+| --- | --- |
+| `layout = StackLayout.new(orientation, padding, spacing)` | orientation `:vertical` veya `:horizontal`, defaults: VBox, 0, 0 |
+| `layout.add(control, width, height) : self` | Zincirleme ekleme |
+| `layout.remove(control) : self` | Çıkar + relayout |
+| `layout.clear : self` | Tüm çocukları sil |
+| `layout.size : Int32` | Çocuk sayısı |
+| `layout.relayout : self` | Tüm çocukları yeniden konumlandır (manuel tetikleme; auto-resize bir sonraki sürümde) |
+
+Vertical: çocuklar dikey; her biri `parent_width - 2*padding` kadar genişlikte.
+Horizontal: çocuklar yatay; her biri belirtilen width kadar, `parent_height - 2*padding` yüksekliğinde.
+
+> **Not:** Resize'da otomatik reflay henüz yok. Pencere yeniden boyutlandırılırsa `layout.relayout` manuel çağrılmalı. Hook altyapısı (`Window#on_resize`) bir sonraki sürümde eklenecek.
+
 ### CheckBox
 
 | Method                                             | Description                       |
@@ -270,6 +289,15 @@ crystal build examples/savefiledialog_example.cr -o bin/savefiledialog_example
 
 Example source: [`examples/savefiledialog_example.cr`](examples/savefiledialog_example.cr)
 
+Run the Layout demo:
+
+```bash
+crystal build examples/layout_example.cr -o bin/layout_example
+./bin/layout_example
+```
+
+Example source: [`examples/layout_example.cr`](examples/layout_example.cr)
+
 Run the ComboBox demo:
 
 ```bash
@@ -306,7 +334,8 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 │            Crystal (src/)                 │
 │  Application · Window · Button · Label    │
 │       TextBox · ListBox · ComboBox          │
-│       CheckBox · FileDialog · RadioButton  │
+│  CheckBox · FileDialog · RadioButton ·     │
+│            StackLayout                       │
 │                  │                        │
 │            lib_quartz.cr                  │
 │          (C bindings via @[Link])         │
@@ -334,7 +363,8 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 - [x] CheckBox, RadioButton
 - [x] ComboBox / DropDown
 - [x] File dialogs
-- [ ] Layout managers (Flow, Grid, Stack)
+- [x] Layout managers — Stack MVP
+- [ ] Layout managers (Flow, Grid)
 - [ ] Menu bar & context menus
 - [ ] Comprehensive test suite
 

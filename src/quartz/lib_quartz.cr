@@ -59,6 +59,13 @@ lib LibQuartz
   # --- Widget hierarchy ---
   fun quartz_widget_set_parent(child_id : Int32, parent_id : Int32) : Void
 
+  # --- Widget geometry ---
+  # Runtime positioning for layout managers. Coordinates are absolute,
+  # relative to the parent window's content area.
+  fun quartz_widget_set_bounds(widget_id : Int32,
+                               x : Int32, y : Int32,
+                               width : Int32, height : Int32) : Void
+
   # --- Widget properties ---
   fun quartz_widget_set_text(widget_id : Int32, text : LibC::Char*) : Void
   fun quartz_widget_set_callback(widget_id : Int32, callback : QuartzCallback) : Void
