@@ -13,7 +13,7 @@
 #   QT_VERSION=5|6          Select Qt version (auto-detected)
 
 .DEFAULT_GOAL := help
-.PHONY: all mac gtk qt win examples clean help
+.PHONY: all mac gtk qt win examples spec spec-fast spec-integration format format-fix lint clean help
 
 # ═══════════════════════════════════════════════════════════════════════
 # Platform detection
@@ -103,6 +103,7 @@ BIN_OFD = bin/openfiledialog_example
 BIN_SFD = bin/savefiledialog_example
 BIN_LAYOUT = bin/layout_example
 BIN_MENU = bin/menu_example
+BIN_TEXTBOX = bin/textbox_example
 
 # ═══════════════════════════════════════════════════════════════════════
 # Targets
@@ -147,9 +148,24 @@ examples: $(OBJ)  ## Build all example applications
 	crystal build $(CRYSTAL_FLAGS) examples/savefiledialog_example.cr -o $(BIN_SFD) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/layout_example.cr -o $(BIN_LAYOUT) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/menu_example.cr -o $(BIN_MENU) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/textbox_example.cr -o $(BIN_TEXTBOX) --link-flags="$(LDFLAGS)"
 
 spec: $(OBJ)  ## Run the crystal spec test suite
 	crystal spec $(CRYSTAL_FLAGS) --link-flags="$(LDFLAGS)"
+
+spec-fast: spec  ## Alias of spec — Phase 1+ keeps this under 2s
+
+spec-integration:  ## Placeholder for the Phase 3 integration suite
+	@echo "No integration tests yet"
+
+format:  ## Verify formatting without modifying files
+	crystal tool format --check src spec examples
+
+format-fix:  ## Normalize formatting in place
+	crystal tool format src spec examples
+
+lint:  ## Run ameba if installed
+	@if command -v ameba >/dev/null 2>&1; then ameba; else echo "ameba not installed, skipping"; fi
 
 # ── Clean ──────────────────────────────────────────────────────────────
 

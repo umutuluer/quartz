@@ -23,6 +23,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+// ── Dialog test seam ─────────────────────────────────────────
+// When enabled, the open/save dialog functions return a canned path
+// instead of running a blocking modal. QUARTZ_TEST_DIALOG_PATH is read at
+// call time (empty => cancel), falling back to the hardcoded defaults.
+static int quartz_test_dialog_mode = 0;
+
+static int dialog_test_active(void) {
+    return quartz_test_dialog_mode != 0 || getenv("QUARTZ_TEST_DIALOG") != NULL;
+}
+
+static const char* dialog_test_path(const char *fallback) {
+    const char *p = getenv("QUARTZ_TEST_DIALOG_PATH");
+    if (p && p[0] == '\0') return NULL;  // empty => cancel
+    return p ? p : fallback;
+}
+
+void quartz_test_dialog_set_mode(int on) {
+    quartz_test_dialog_mode = on ? 1 : 0;
+}
+
 // ── Widget registry ────────────────────────────────────────────────────
 // Most widgets are HWNDs.  We store widget_id → HWND.
 // We also store HWND → widget_id via Windows window properties
@@ -743,6 +763,24 @@ void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
     MoveWindow(hwnd, x, y, width, height, TRUE);
 }
 
+void quartz_widget_get_bounds(int32_t widget_id, int32_t *out_x, int32_t *out_y,
+                              int32_t *out_w, int32_t *out_h) {
+    if (out_x) *out_x = 0;
+    if (out_y) *out_y = 0;
+    if (out_w) *out_w = 0;
+    if (out_h) *out_h = 0;
+
+    HWND hwnd = find_hwnd(widget_id);
+    if (!hwnd) return;
+    RECT rc;
+    if (GetWindowRect(hwnd, &rc)) {
+        if (out_x) *out_x = rc.left;
+        if (out_y) *out_y = rc.top;
+        if (out_w) *out_w = rc.right - rc.left;
+        if (out_h) *out_h = rc.bottom - rc.top;
+    }
+}
+
 // ── Widget properties ──────────────────────────────────────────────────
 
 void quartz_widget_set_text(int32_t widget_id, const char *text) {
@@ -1126,6 +1164,13 @@ const char* quartz_open_file_dialog(const char* title, const char* filter,
     szFile[0] = '\0';
     (void)title;
 
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_open.txt");
+        if (!mock) return NULL;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        snprintf(buffer, sizeof(buffer), "%s", mock);
+        return buffer;
+    }
+
     if (filter && *filter) {
         build_filter_buffer(filter);
     }
@@ -1184,6 +1229,22 @@ const char* quartz_save_file_dialog(const char* title, const char* filter,
     static char szFile[4096];
     buffer[0] = '\0';
     (void)title;
+
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_save.txt");
+        if (!mock) return NULL;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        snprintf(buffer, sizeof(buffer), "%s", mock);
+        if (default_ext && *default_ext) {
+            char suffix[64];
+            snprintf(suffix, sizeof(suffix), ".%s", default_ext);
+            size_t blen = strlen(buffer);
+            size_t slen = strlen(suffix);
+            if (blen < slen || strcmp(buffer + blen - slen, suffix) != 0) {
+                snprintf(buffer + blen, sizeof(buffer) - blen, "%s", suffix);
+            }
+        }
+        return buffer;
+    }
 
     if (file_name && *file_name) {
         snprintf(szFile, sizeof(szFile), "%s", file_name);
@@ -1313,4 +1374,49 @@ void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
     // Only the binding is recorded here; the actual popup dispatch happens in
     // the WM_CONTEXTMENU handler of quartz_wnd_proc.
     register_context_menu(widget_id, menu_id);
+}
+
+// =======================================================================
+// Test trampolines
+//
+// These walk the same per-type linked lists (CallbackEntry chains) that the
+// WM_COMMAND handler dispatches through. Each find_* helper returns the
+// matching node by widget_id, or NULL — which makes unknown ids and widgets
+// with no registered callback natural no-ops.
+// =======================================================================
+
+void quartz_test_fire_button_click(int32_t widget_id) {
+    CallbackEntry *e = find_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
+}
+
+void quartz_test_fire_toggle_checked(int32_t widget_id) {
+    // CheckBox + RadioButton share the toggle list (checked first in WM_COMMAND)
+    CallbackEntry *e = find_toggle_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
+}
+
+void quartz_test_fire_text_change(int32_t widget_id) {
+    CallbackEntry *e = find_change_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
+}
+
+void quartz_test_fire_listbox_selection(int32_t widget_id) {
+    CallbackEntry *e = find_selection_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
+}
+
+void quartz_test_fire_combobox_selection(int32_t widget_id) {
+    CallbackEntry *e = find_selection_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
+}
+
+void quartz_test_fire_combobox_text(int32_t widget_id) {
+    CallbackEntry *e = find_text_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
+}
+
+void quartz_test_fire_menu_item(int32_t widget_id) {
+    CallbackEntry *e = find_menu_callback(widget_id);
+    if (e && e->callback) e->callback(widget_id);
 }

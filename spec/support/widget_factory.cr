@@ -3,8 +3,6 @@ require "../spec_helper"
 # Shared factory helpers for unit specs. The native toolkit is already
 # initialised by spec_helper.cr, so these can be called directly.
 module WidgetFactory
-  DEFAULT_GEOMETRY = {0, 0, 100, 30}
-
   def self.button(text = "Test", x = 0, y = 0, width = 100, height = 30)
     Quartz::Button.new(text, x, y, width, height)
   end

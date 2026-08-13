@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/umutuluer/quartz/actions"><img src="https://img.shields.io/badge/CI-passing-brightgreen" alt="CI" /></a>
+  <a href="https://github.com/umutuluer/quartz/actions/workflows/ci.yml"><img src="https://github.com/umutuluer/quartz/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://codecov.io/gh/umutuluer/quartz"><img src="https://codecov.io/gh/umutuluer/quartz/branch/main/graph/badge.svg" alt="Coverage" /></a>
   <a href="https://github.com/umutuluer/quartz/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License" /></a>
   <a href="https://crystal-lang.org"><img src="https://img.shields.io/badge/crystal-%3E%3D%201.21.0-black" alt="Crystal" /></a>
   <a href="#platform-support"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey" alt="Platforms" /></a>
@@ -404,7 +405,7 @@ Example source: [`examples/menu_example.cr`](examples/menu_example.cr)
 - [x] Layout managers — Stack MVP
 - [ ] Layout managers (Flow, Grid)
 - [x] Menu bar & context menus (C layer: AppKit/GTK/Win32/Qt items + context menus; Qt menubar attach deferred — QMainWindow promotion. Submenus out of MVP.)
-- [ ] Comprehensive test suite
+- [x] Comprehensive test suite
 
 ---
 
@@ -437,3 +438,27 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 <p align="center">
   <sub>Built with ❤️ and Crystal</sub>
 </p>
+
+## Testing
+
+Quartz ships with **259 deterministic spec examples** that run in under 500ms across 4 native backends.
+
+```bash
+make spec          # run the full suite (default backend: mac/AppKit)
+make lint          # ameba static analysis
+make format        # crystal tool format --check
+make examples      # build the 10 example programs
+```
+
+The test suite covers:
+
+- **Crystal-level coverage** — every public method on every widget
+- **Native callback routing** — C-level trampoline helpers fire real callbacks through the 4 backends' callback tables
+- **Lifecycle** — show/close, multi-window ID uniqueness, re-parenting, queryability after operations
+- **Edge cases** — Unicode (emoji 🚀, RTL عربية, ZWJ 👨‍👩‍👧), 10k-char strings, zero/negative dimensions, empty strings
+- **Geometry** — StackLayout pixel-position asserts via `quartz_widget_get_bounds`
+- **Modal dialogs** — `OpenFileDialog`/`SaveFileDialog` mocked through a C-level seam (`quartz_test_dialog_set_mode` + `QUARTZ_TEST_DIALOG_PATH`)
+
+CI matrix runs the full suite on all 4 backends: **macOS/AppKit**, **Linux/GTK3** (under xvfb), **Linux/Qt5** (offscreen QPA), **Windows/Win32**.
+
+Spec files live under `spec/` (unit specs in `spec/unit/`, helpers in `spec/support/`). The C-level test helpers (`quartz_test_fire_*`, `quartz_widget_get_bounds`, `quartz_test_dialog_set_mode`) are declared in `ext/quartz_helper.h` and implemented in all 4 backends.

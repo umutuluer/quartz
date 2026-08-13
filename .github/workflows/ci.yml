@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.backend }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest,  backend: mac }
+          - { os: ubuntu-latest, backend: gtk }
+          - { os: ubuntu-latest, backend: qt, qt_version: "5" }
+          - { os: windows-latest, backend: win }
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Install GTK deps (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.backend == 'gtk'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev xvfb
+
+      - name: Install Qt5 deps (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.backend == 'qt'
+        run: sudo apt-get update && sudo apt-get install -y qtbase5-dev
+
+      - name: Specs (macOS / AppKit)
+        if: matrix.backend == 'mac'
+        run: make spec BACKEND=mac
+
+      - name: Specs (Linux / GTK under xvfb)
+        if: matrix.backend == 'gtk'
+        run: xvfb-run -a make spec BACKEND=gtk
+
+      - name: Specs (Linux / Qt offscreen)
+        if: matrix.backend == 'qt'
+        run: make spec BACKEND=qt QT_VERSION=${{ matrix.qt_version }}
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Specs (Windows / Win32)
+        if: matrix.backend == 'win'
+        run: make spec BACKEND=win
+        shell: bash
+
+      - name: Examples (compile-only)
+        run: make examples BACKEND=${{ matrix.backend }}
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.backend == 'qt' && 'offscreen' || '' }}
+
+      - name: Format check
+        run: crystal tool format --check src spec examples
+
+      - name: Lint (ameba)
+        run: |
+          if command -v ameba >/dev/null 2>&1; then
+            ameba
+          else
+            echo "ameba not installed, skipping"
+          fi
+
+      - name: Liveness smoke (macOS only)
+        if: matrix.backend == 'mac'
+        run: |
+          timeout 3 ./bin/hello_world
+          [ $? -eq 124 ] || (echo "hello_world exited prematurely" && exit 1)
+
+  nightly:
+    name: Crystal nightly
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: nightly
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev xvfb
+      - run: xvfb-run -a make spec BACKEND=gtk

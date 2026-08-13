@@ -13,6 +13,9 @@
 # Editor / IDE
 .vscode/
 
+# Deepwork session state (orchestrator-local)
+.slim/deepwork/
+
 # Libraries don't need dependency lock
 # Dependencies will be locked in applications that use them
 /shard.lock

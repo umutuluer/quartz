@@ -83,7 +83,7 @@ module Quartz
     # ```
     def selected_text : String?
       idx = LibQuartz.quartz_combobox_get_selected_index(@handle)
-      return nil if idx < 0
+      return if idx < 0
       ptr = LibQuartz.quartz_combobox_get_item_text(@handle, idx)
       String.new(ptr)
     end

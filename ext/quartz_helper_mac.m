@@ -3,11 +3,25 @@
 #import <objc/runtime.h>
 #import <stdatomic.h>
 #import <stdio.h>
+#import <stdlib.h>
+#import <string.h>
 
 // ---------------------------------------------------------------------------
 // Internal widget map: widget_id -> NSObject* (NSWindow or NSView)
 // ---------------------------------------------------------------------------
 static NSMutableDictionary<NSNumber*, id> *widgetMap = nil;
+
+// ---------------------------------------------------------------------------
+// Shadow geometry registry: widget_id -> NSRect (the last bounds requested
+// through quartz_widget_set_bounds).
+//
+// AppKit applies its own deferred auto layout to subviews, so the native
+// `frame` of a view can drift from what setFrame: requested until a full
+// display pass runs (which never happens in headless tests). Reading back
+// the recorded values keeps layout assertions deterministic and still proves
+// the exact pixel values the layout manager asked the backend to apply.
+// ---------------------------------------------------------------------------
+static NSMutableDictionary<NSNumber*, NSValue*> *boundsMap = nil;
 
 // ---------------------------------------------------------------------------
 // Callback map: widget_id -> QuartzCallback (stored as NSValue pointer)
@@ -25,6 +39,31 @@ static NSMutableDictionary<NSNumber*, NSValue*> *menuCallbackMap = nil;
 // Thread-safe widget ID counter
 // ---------------------------------------------------------------------------
 static atomic_int nextWidgetId = 1;
+
+// ---------------------------------------------------------------------------
+// Dialog test seam
+//
+// When quartz_test_dialog_mode is on, the native open/save dialog functions
+// return a canned path instead of running a blocking modal. The
+// QUARTZ_TEST_DIALOG_PATH env var is consulted *at call time* so tests can
+// flip the return value without re-initialising: a set-but-empty value
+// means cancel (NULL); an unset var means the hardcoded default below.
+// ---------------------------------------------------------------------------
+static int quartz_test_dialog_mode = 0;
+
+static int dialog_test_active(void) {
+    return quartz_test_dialog_mode != 0 || getenv("QUARTZ_TEST_DIALOG") != NULL;
+}
+
+static const char* dialog_test_path(const char *fallback) {
+    const char *p = getenv("QUARTZ_TEST_DIALOG_PATH");
+    if (p && p[0] == '\0') return NULL;  // empty => cancel
+    return p ? p : fallback;
+}
+
+void quartz_test_dialog_set_mode(int on) {
+    quartz_test_dialog_mode = on ? 1 : 0;
+}
 
 static int32_t next_widget_id(void) {
     return atomic_fetch_add(&nextWidgetId, 1);
@@ -267,6 +306,7 @@ void quartz_init(void) {
     widgetMap   = [NSMutableDictionary dictionary];
     callbackMap = [NSMutableDictionary dictionary];
     menuCallbackMap = [NSMutableDictionary dictionary];
+    boundsMap   = [NSMutableDictionary dictionary];
 
     NSApplication *app = [NSApplication sharedApplication];
     AppDelegate *delegate = [[AppDelegate alloc] init];
@@ -515,6 +555,26 @@ void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
     id view = widgetMap[@(widget_id)];
     if (!view || ![view isKindOfClass:[NSView class]]) return;
     [(NSView *)view setFrame:NSMakeRect(x, y, width, height)];
+    if (!boundsMap) boundsMap = [NSMutableDictionary dictionary];
+    boundsMap[@(widget_id)] = [NSValue valueWithRect:NSMakeRect(x, y, width, height)];
+}
+
+// Reads back the bounds recorded by quartz_widget_set_bounds (see the
+// shadow-registry comment above). Unknown ids are reported as all-zeroes.
+void quartz_widget_get_bounds(int32_t widget_id, int32_t *out_x, int32_t *out_y,
+                              int32_t *out_w, int32_t *out_h) {
+    if (out_x) *out_x = 0;
+    if (out_y) *out_y = 0;
+    if (out_w) *out_w = 0;
+    if (out_h) *out_h = 0;
+
+    NSValue *v = boundsMap[@(widget_id)];
+    if (!v) return;
+    NSRect r = [v rectValue];
+    if (out_x) *out_x = (int32_t)r.origin.x;
+    if (out_y) *out_y = (int32_t)r.origin.y;
+    if (out_w) *out_w = (int32_t)r.size.width;
+    if (out_h) *out_h = (int32_t)r.size.height;
 }
 
 // ---------------------------------------------------------------------------
@@ -886,6 +946,13 @@ const char* quartz_open_file_dialog(const char* title, const char* filter,
     static char buffer[4096];
     buffer[0] = '\0';
 
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_open.txt");
+        if (!mock) return NULL;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        snprintf(buffer, sizeof(buffer), "%s", mock);
+        return buffer;
+    }
+
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.canChooseFiles = YES;
     panel.canChooseDirectories = NO;
@@ -929,6 +996,23 @@ const char* quartz_save_file_dialog(const char* title, const char* filter,
                                     int32_t owner_widget_id) {
     static char buffer[4096];
     buffer[0] = '\0';
+
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_save.txt");
+        if (!mock) return NULL;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        snprintf(buffer, sizeof(buffer), "%s", mock);
+        // Emulate the real panel's "append extension if the user omitted it".
+        if (default_ext && *default_ext) {
+            char suffix[64];
+            snprintf(suffix, sizeof(suffix), ".%s", default_ext);
+            size_t blen = strlen(buffer);
+            size_t slen = strlen(suffix);
+            if (blen < slen || strcmp(buffer + blen - slen, suffix) != 0) {
+                snprintf(buffer + blen, sizeof(buffer) - blen, "%s", suffix);
+            }
+        }
+        return buffer;
+    }
 
     NSSavePanel *panel = [NSSavePanel savePanel];
 
@@ -1161,4 +1245,71 @@ void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
 
     NSView *view = (NSView*)viewObj;
     [view setMenu:menu];
+}
+
+// ===========================================================================
+// Test trampolines
+//
+// These simulate a native event and dispatch through the very same callback
+// registry the real UI uses (callbackMap with its offset keys, plus the
+// dedicated menuCallbackMap). Messaging a nil map is a no-op in Objective-C,
+// so they are safe to call before quartz_init.
+// ===========================================================================
+
+void quartz_test_fire_button_click(int32_t widget_id) {
+    NSValue *val = callbackMap[@(widget_id)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) cb(widget_id);
+    }
+}
+
+void quartz_test_fire_toggle_checked(int32_t widget_id) {
+    // CheckBox + RadioButton share the +300000 toggle channel
+    NSValue *val = callbackMap[@(widget_id + 300000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) cb(widget_id);
+    }
+}
+
+void quartz_test_fire_text_change(int32_t widget_id) {
+    NSValue *val = callbackMap[@(widget_id + 100000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) cb(widget_id);
+    }
+}
+
+void quartz_test_fire_listbox_selection(int32_t widget_id) {
+    NSValue *val = callbackMap[@(widget_id + 200000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) cb(widget_id);
+    }
+}
+
+void quartz_test_fire_combobox_selection(int32_t widget_id) {
+    NSValue *val = callbackMap[@(widget_id + 400000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) cb(widget_id);
+    }
+}
+
+void quartz_test_fire_combobox_text(int32_t widget_id) {
+    NSValue *val = callbackMap[@(widget_id + 500000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) cb(widget_id);
+    }
+}
+
+void quartz_test_fire_menu_item(int32_t widget_id) {
+    NSValue *val = menuCallbackMap[@(widget_id)];
+    if (val) {
+        QuartzCallback cb;
+        [val getValue:&cb];
+        if (cb) cb(widget_id);
+    }
 }

@@ -12,6 +12,27 @@
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+
+// ── Dialog test seam ─────────────────────────────────────────
+// When enabled, the open/save dialog functions return a canned path
+// instead of running a blocking modal. QUARTZ_TEST_DIALOG_PATH is read at
+// call time (empty => cancel), falling back to the hardcoded defaults.
+static int quartz_test_dialog_mode = 0;
+
+static int dialog_test_active(void) {
+    return quartz_test_dialog_mode != 0 || getenv("QUARTZ_TEST_DIALOG") != NULL;
+}
+
+static const char* dialog_test_path(const char *fallback) {
+    const char *p = getenv("QUARTZ_TEST_DIALOG_PATH");
+    if (p && p[0] == '\0') return NULL;  // empty => cancel
+    return p ? p : fallback;
+}
+
+void quartz_test_dialog_set_mode(int on) {
+    quartz_test_dialog_mode = on ? 1 : 0;
+}
 
 // ── Widget metadata ────────────────────────────────────────────────────
 
@@ -393,6 +414,24 @@ void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
         // Container bulunamadı veya GtkFixed değil — size request yine de uygula
         gtk_widget_set_size_request(widget, width, height);
     }
+}
+
+void quartz_widget_get_bounds(int32_t widget_id, int32_t *out_x, int32_t *out_y,
+                              int32_t *out_w, int32_t *out_h) {
+    if (out_x) *out_x = 0;
+    if (out_y) *out_y = 0;
+    if (out_w) *out_w = 0;
+    if (out_h) *out_h = 0;
+
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (!widget) return;
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(widget, &alloc);
+    if (out_x) *out_x = alloc.x;
+    if (out_y) *out_y = alloc.y;
+    if (out_w) *out_w = alloc.width;
+    if (out_h) *out_h = alloc.height;
 }
 
 // ── Widget properties ──────────────────────────────────────────────────
@@ -939,6 +978,13 @@ const char* quartz_open_file_dialog(const char* title, const char* filter_str,
     static char buffer[4096];
     buffer[0] = '\0';
 
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_open.txt");
+        if (!mock) return NULL;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        snprintf(buffer, sizeof(buffer), "%s", mock);
+        return buffer;
+    }
+
     GtkWindow *owner = find_owner_window(owner_widget_id);
 
     const char *btn_open = multiselect ? "Select" : "Open";
@@ -1002,6 +1048,22 @@ const char* quartz_save_file_dialog(const char* title, const char* filter_str,
                                     int32_t owner_widget_id) {
     static char buffer[4096];
     buffer[0] = '\0';
+
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_save.txt");
+        if (!mock) return NULL;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        snprintf(buffer, sizeof(buffer), "%s", mock);
+        if (default_ext && *default_ext) {
+            char suffix[64];
+            snprintf(suffix, sizeof(suffix), ".%s", default_ext);
+            size_t blen = strlen(buffer);
+            size_t slen = strlen(suffix);
+            if (blen < slen || strcmp(buffer + blen - slen, suffix) != 0) {
+                snprintf(buffer + blen, sizeof(buffer) - blen, "%s", suffix);
+            }
+        }
+        return buffer;
+    }
 
     GtkWindow *owner = find_owner_window(owner_widget_id);
 
@@ -1184,4 +1246,61 @@ void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
     g_signal_connect(widget, "button-press-event",
                      G_CALLBACK(on_widget_button_press), menu);
     g_hash_table_insert(g_contextmenu_target_map, GINT_TO_POINTER(widget_id), widget);
+}
+
+// =======================================================================
+// Test trampolines
+//
+// These look up the very same per-type callback hash tables the GTK signal
+// handlers dispatch through. The registries are created lazily by
+// ensure_init(), so guard each lookup with a null check.
+// =======================================================================
+
+void quartz_test_fire_button_click(int32_t widget_id) {
+    if (!callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_toggle_checked(int32_t widget_id) {
+    if (!toggle_callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(toggle_callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_text_change(int32_t widget_id) {
+    if (!change_callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(change_callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_listbox_selection(int32_t widget_id) {
+    if (!selection_callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(selection_callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_combobox_selection(int32_t widget_id) {
+    if (!selection_callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(selection_callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_combobox_text(int32_t widget_id) {
+    if (!g_text_callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(g_text_callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_menu_item(int32_t widget_id) {
+    if (!g_menu_callback_map) return;
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(g_menu_callback_map,
+                                                            GINT_TO_POINTER(widget_id));
+    if (cb) cb(widget_id);
 }

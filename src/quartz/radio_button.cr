@@ -27,7 +27,7 @@ module Quartz
     # already checked, uncheck sibling radios in the same parent.
     def parent=(value : Control?)
       super(value)
-      if value && self.checked
+      if value && checked
         _uncheck_siblings
       end
     end

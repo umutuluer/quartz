@@ -127,6 +127,36 @@ int32_t quartz_toggle_get_checked(int32_t widget_id);
 void    quartz_toggle_set_checked(int32_t widget_id, int32_t checked);
 void    quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callback);
 
+// --- Test trampolines ---
+// Synthesise a native event for the given widget and invoke its registered
+// callback exactly as the real UI would. These are the test seam for
+// verifying the C→Crystal callback path. Production code never calls them.
+//
+// Each backend implements the relevant ones and stubs the rest (returns).
+// Test suites assert that the registered Crystal block fires with the
+// correct widget_id.
+void quartz_test_fire_button_click(int32_t widget_id);
+void quartz_test_fire_toggle_checked(int32_t widget_id);   // CheckBox + RadioButton
+void quartz_test_fire_text_change(int32_t widget_id);     // TextBox
+void quartz_test_fire_listbox_selection(int32_t widget_id);
+void quartz_test_fire_combobox_selection(int32_t widget_id);
+void quartz_test_fire_combobox_text(int32_t widget_id);
+void quartz_test_fire_menu_item(int32_t widget_id);
+
+// --- Widget geometry query ---
+// Reads the widget's current bounds. Unknown/invalid ids and widgets the
+// backend cannot resolve are reported as all-zeroes (never a crash).
+void quartz_widget_get_bounds(int32_t widget_id,
+                              int32_t *out_x, int32_t *out_y,
+                              int32_t *out_w, int32_t *out_h);
+
+// --- Dialog test seam ---
+// When enabled, quartz_open_file_dialog / quartz_save_file_dialog return a
+// canned path instead of running a blocking modal. Test-only hook; the
+// native dialog functions consult the QUARTZ_TEST_DIALOG_PATH env var at
+// call time (empty value => cancel), falling back to a hardcoded default.
+void quartz_test_dialog_set_mode(int on);
+
 #ifdef __cplusplus
 }
 #endif

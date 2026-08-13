@@ -50,4 +50,25 @@ describe Quartz::Control do
       ctrl.parent.nil?.should be_true
     end
   end
+
+  describe "#context_menu=" do
+    it "attaching a ContextMenu does not raise" do
+      ctrl = ControlSpec::TestControl.new(1)
+      menu = Quartz::ContextMenu.new
+      ctrl.context_menu = menu
+    end
+
+    it "setting nil detaches as a no-op" do
+      ctrl = ControlSpec::TestControl.new(1)
+      menu = Quartz::ContextMenu.new
+      ctrl.context_menu = menu
+      ctrl.context_menu = nil
+    end
+
+    it "returns self for chaining" do
+      ctrl = ControlSpec::TestControl.new(1)
+      menu = Quartz::ContextMenu.new
+      (ctrl.context_menu = menu).should be(ctrl)
+    end
+  end
 end

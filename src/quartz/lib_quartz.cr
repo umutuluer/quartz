@@ -144,4 +144,21 @@ lib LibQuartz
   fun quartz_toggle_get_checked(widget_id : Int32) : Int32
   fun quartz_toggle_set_checked(widget_id : Int32, checked : Int32) : Void
   fun quartz_toggle_set_change_callback(widget_id : Int32, callback : QuartzCallback) : Void
+
+  # --- Test trampolines ---
+  fun quartz_test_fire_button_click(widget_id : Int32) : Void
+  fun quartz_test_fire_toggle_checked(widget_id : Int32) : Void
+  fun quartz_test_fire_text_change(widget_id : Int32) : Void
+  fun quartz_test_fire_listbox_selection(widget_id : Int32) : Void
+  fun quartz_test_fire_combobox_selection(widget_id : Int32) : Void
+  fun quartz_test_fire_combobox_text(widget_id : Int32) : Void
+  fun quartz_test_fire_menu_item(widget_id : Int32) : Void
+
+  # --- Widget geometry query ---
+  fun quartz_widget_get_bounds(widget_id : Int32,
+                               out_x : Int32*, out_y : Int32*,
+                               out_w : Int32*, out_h : Int32*) : Void
+
+  # --- Dialog test seam ---
+  fun quartz_test_dialog_set_mode(on : Int32) : Void
 end

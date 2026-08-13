@@ -1,0 +1,29 @@
+codecov:
+  require_ci_to_pass: true
+  notify:
+    after_n_builds: 4
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...90"
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 5%
+    patch: off
+
+comment:
+  layout: "header, diff, flags, components, files, footer"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+ignore:
+  - "ext/**"
+  - "examples/**"
+  - "spec/**"
+  - "bin/**"
+  - ".slim/**"

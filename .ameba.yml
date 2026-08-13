@@ -1,0 +1,22 @@
+# Crystal Ameba configuration
+# https://github.com/crystal-ameba/ameba
+
+Excluded:
+  - ext/
+  - examples/
+  - bin/
+
+Lint/Syntax:                   { enabled: true }
+Lint/UselessAssign:            { enabled: true }
+Lint/ShadowedArgument:         { enabled: true }
+Lint/ShadowedException:        { enabled: true }
+Lint/UnlessElse:               { enabled: true }
+Style/RedundantBegin:          { enabled: true }
+Style/ParenthesesAroundCondition: { enabled: true }
+Style/IfElseSemicolon:         { enabled: true }
+Style/RedundantSelf:           { enabled: true }
+Style/NegatedConditionsInUnless: { enabled: true }
+Layout/LineLength:             { enabled: true, max: 120 }
+Metrics/CyclomaticComplexity:  { enabled: true, max: 12 }
+Metrics/AbcSize:               { enabled: true, max: 25 }
+Metrics/MethodLength:          { enabled: true, max: 60 }

@@ -86,7 +86,7 @@ module Quartz
     end
 
     private def parent_window : Window?
-      return nil if @entries.empty?
+      return if @entries.empty?
       @entries[0][:control].parent.as?(Window)
     end
 
@@ -95,14 +95,11 @@ module Quartz
       y = @padding
       width = parent.width - 2 * @padding
 
-      @entries.each_with_index do |entry, i|
-        if i > 0
-          y += entry[:h] + @spacing
-        end
+      @entries.each do |entry|
         LibQuartz.quartz_widget_set_bounds(
           entry[:control].handle, x, y, width, entry[:h]
         )
-        y += entry[:h]
+        y += entry[:h] + @spacing
       end
     end
 
@@ -111,14 +108,11 @@ module Quartz
       y = @padding
       height = parent.height - 2 * @padding
 
-      @entries.each_with_index do |entry, i|
-        if i > 0
-          x += entry[:w] + @spacing
-        end
+      @entries.each do |entry|
         LibQuartz.quartz_widget_set_bounds(
           entry[:control].handle, x, y, entry[:w], height
         )
-        x += entry[:w]
+        x += entry[:w] + @spacing
       end
     end
   end

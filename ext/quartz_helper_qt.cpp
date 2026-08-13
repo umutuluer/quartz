@@ -30,6 +30,9 @@
 #include <QMenuBar>
 #include <QMap>
 #include <QAtomicInt>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
 
 // ═══════════════════════════════════════════════════════════════════════
 // Internal helpers — the header function that wraps Qt setup
@@ -73,6 +76,22 @@ static QMap<int32_t, QuartzCallback> *g_menu_callbacks = nullptr;
 
 // Thread-safe ID counter
 static QAtomicInt g_next_id(1);
+
+// Dialog test seam: when enabled the open/save dialog functions
+// return a canned path instead of running a blocking modal. The
+// QUARTZ_TEST_DIALOG_PATH env var is read at call time (empty => cancel),
+// falling back to the hardcoded defaults.
+static int quartz_test_dialog_mode = 0;
+
+static int dialog_test_active() {
+    return quartz_test_dialog_mode != 0 || getenv("QUARTZ_TEST_DIALOG") != nullptr;
+}
+
+static const char* dialog_test_path(const char *fallback) {
+    const char *p = getenv("QUARTZ_TEST_DIALOG_PATH");
+    if (p && p[0] == '\0') return nullptr;  // empty => cancel
+    return p ? p : fallback;
+}
 
 void ensure_init() {
     if (!g_widgets) {
@@ -150,6 +169,10 @@ void quartz_terminate(void) {
     if (g_app) {
         g_app->quit();
     }
+}
+
+void quartz_test_dialog_set_mode(int on) {
+    quartz_test_dialog_mode = on ? 1 : 0;
 }
 
 // ── Window ────────────────────────────────────────────────────────────
@@ -310,6 +333,23 @@ void quartz_widget_set_bounds(int32_t widget_id, int32_t x, int32_t y,
     QWidget *widget = it.value();
     if (!widget) return;
     widget->setGeometry(x, y, width, height);
+}
+
+void quartz_widget_get_bounds(int32_t widget_id, int32_t *out_x, int32_t *out_y,
+                              int32_t *out_w, int32_t *out_h) {
+    if (out_x) *out_x = 0;
+    if (out_y) *out_y = 0;
+    if (out_w) *out_w = 0;
+    if (out_h) *out_h = 0;
+
+    if (!g_widgets) return;
+    QWidget *w = g_widgets->value(widget_id, nullptr);
+    if (!w) return;
+    QRect r = w->geometry();
+    if (out_x) *out_x = r.x();
+    if (out_y) *out_y = r.y();
+    if (out_w) *out_w = r.width();
+    if (out_h) *out_h = r.height();
 }
 
 // ── Widget properties ─────────────────────────────────────────────────
@@ -706,6 +746,13 @@ const char* quartz_open_file_dialog(const char* title, const char* filter,
     static QByteArray buffer;
     buffer.clear();
 
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_open.txt");
+        if (!mock) return nullptr;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        buffer = QByteArray(mock);
+        return buffer.constData();
+    }
+
     QWidget *owner = findOwnerWidget(owner_widget_id);
     QString qtFilter = convertFilter(filter);
     QString dir = initial_directory ? QString::fromUtf8(initial_directory) : QString();
@@ -735,6 +782,19 @@ const char* quartz_save_file_dialog(const char* title, const char* filter,
                                     int32_t owner_widget_id) {
     static QByteArray buffer;
     buffer.clear();
+
+    if (dialog_test_active()) {
+        const char *mock = dialog_test_path("/tmp/quartz_test_save.txt");
+        if (!mock) return nullptr;  // empty QUARTZ_TEST_DIALOG_PATH => cancel
+        buffer = QByteArray(mock);
+        if (default_ext && *default_ext) {
+            QByteArray suffix = "." + QByteArray(default_ext);
+            if (!buffer.endsWith(suffix)) {
+                buffer += suffix;  // emulate the real dialog appending the ext
+            }
+        }
+        return buffer.constData();
+    }
 
     QWidget *owner = findOwnerWidget(owner_widget_id);
     QString qtFilter = convertFilter(filter);
@@ -865,6 +925,48 @@ void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
                      [widget, menu](const QPoint &pos) {
         menu->exec(widget->mapToGlobal(pos));
     });
+}
+
+// ── Test trampolines ───────────────────────────────────────────
+//
+// These dispatch through the very same per-type QMap registries the Qt
+// signal/slot connections read from. The maps are allocated lazily by
+// ensure_init(), so guard each lookup with a null check; QMap::value with a
+// default of nullptr makes the "unknown id / no callback" case a no-op.
+
+void quartz_test_fire_button_click(int32_t widget_id) {
+    QuartzCallback cb = g_callbacks ? g_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_toggle_checked(int32_t widget_id) {
+    QuartzCallback cb = g_toggle_callbacks ? g_toggle_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_text_change(int32_t widget_id) {
+    QuartzCallback cb = g_change_callbacks ? g_change_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_listbox_selection(int32_t widget_id) {
+    QuartzCallback cb = g_selection_callbacks ? g_selection_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_combobox_selection(int32_t widget_id) {
+    QuartzCallback cb = g_selection_callbacks ? g_selection_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_combobox_text(int32_t widget_id) {
+    QuartzCallback cb = g_text_callbacks ? g_text_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
+}
+
+void quartz_test_fire_menu_item(int32_t widget_id) {
+    QuartzCallback cb = g_menu_callbacks ? g_menu_callbacks->value(widget_id, nullptr) : nullptr;
+    if (cb) cb(widget_id);
 }
 
 } // extern "C"

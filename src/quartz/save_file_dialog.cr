@@ -13,7 +13,7 @@ module Quartz
   # end
   # ```
   class SaveFileDialog < FileDialog
-    property overwrite_prompt : Bool = true
+    property? overwrite_prompt : Bool = true
 
     def show_dialog(owner : Window? = nil) : String?
       owner_id = owner ? owner.handle : -1
@@ -23,7 +23,7 @@ module Quartz
         initial_directory.empty? ? Pointer(UInt8).null : initial_directory.to_unsafe,
         default_ext.empty? ? Pointer(UInt8).null : default_ext.to_unsafe,
         file_name.empty? ? Pointer(UInt8).null : file_name.to_unsafe,
-        overwrite_prompt ? 1 : 0,
+        overwrite_prompt? ? 1 : 0,
         owner_id
       )
       ptr.null? ? nil : String.new(ptr)

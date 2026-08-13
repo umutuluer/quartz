@@ -1,33 +1,28 @@
 require "../spec_helper"
 
-# Local shorthand around the shared WidgetFactory.
-private def create_test_listbox(x = 0, y = 0, width = 150, height = 100)
-  WidgetFactory.listbox(x, y, width, height)
-end
-
 describe Quartz::ListBox do
   describe "type hierarchy" do
     it "inherits from Control" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.should be_a(Quartz::Control)
     end
 
     it "is a ListBox" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.should be_a(Quartz::ListBox)
     end
   end
 
   describe "#handle" do
     it "returns a positive handle" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.handle.should be > 0
     end
 
     it "each listbox gets a unique handle" do
-      l1 = create_test_listbox
-      l2 = create_test_listbox
-      l3 = create_test_listbox
+      l1 = WidgetFactory.listbox
+      l2 = WidgetFactory.listbox
+      l3 = WidgetFactory.listbox
       handles = [l1.handle, l2.handle, l3.handle]
       handles.uniq.size.should eq(3)
     end
@@ -35,13 +30,13 @@ describe Quartz::ListBox do
 
   describe "#add_item" do
     it "adds an item and increases item_count" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Merhaba")
       listbox.item_count.should eq(1)
     end
 
     it "adds multiple items" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Öğe 1")
       listbox.add_item("Öğe 2")
       listbox.add_item("Öğe 3")
@@ -49,19 +44,19 @@ describe Quartz::ListBox do
     end
 
     it "returns self for method chaining" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       result = listbox.add_item("Test")
       result.should be(listbox)
     end
 
     it "supports Turkish characters" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Türkçe karakter: ğüşıöçĞÜŞİÖÇ")
       listbox.item_text(0).should eq("Türkçe karakter: ğüşıöçĞÜŞİÖÇ")
     end
 
     it "supports empty string" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("")
       listbox.item_text(0).should eq("")
     end
@@ -69,7 +64,7 @@ describe Quartz::ListBox do
 
   describe "#remove_item" do
     it "removes an item at a valid index" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("A")
       listbox.add_item("B")
       listbox.add_item("C")
@@ -80,7 +75,7 @@ describe Quartz::ListBox do
     end
 
     it "returns self for method chaining" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Test")
       result = listbox.remove_item(0)
       result.should be(listbox)
@@ -89,7 +84,7 @@ describe Quartz::ListBox do
 
   describe "#clear" do
     it "removes all items" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("A")
       listbox.add_item("B")
       listbox.clear
@@ -97,13 +92,13 @@ describe Quartz::ListBox do
     end
 
     it "is safe to call on empty listbox" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.clear
       listbox.item_count.should eq(0)
     end
 
     it "returns self for method chaining" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       result = listbox.clear
       result.should be(listbox)
     end
@@ -111,13 +106,13 @@ describe Quartz::ListBox do
 
   describe "#selected_index" do
     it "returns -1 when nothing is selected" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Test")
       listbox.selected_index.should eq(-1)
     end
 
     it "sets the selected index" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("A")
       listbox.add_item("B")
       listbox.selected_index = 1
@@ -125,7 +120,7 @@ describe Quartz::ListBox do
     end
 
     it "clears selection with -1" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("A")
       listbox.selected_index = 0
       listbox.selected_index = -1
@@ -135,13 +130,13 @@ describe Quartz::ListBox do
 
   describe "#selected_text" do
     it "returns nil when nothing is selected" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Test")
       listbox.selected_text.should be_nil
     end
 
     it "returns the selected item text" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("Merhaba")
       listbox.add_item("Dünya")
       listbox.selected_index = 0
@@ -151,12 +146,12 @@ describe Quartz::ListBox do
 
   describe "#item_count" do
     it "returns 0 for an empty listbox" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.item_count.should eq(0)
     end
 
     it "returns the correct count after adding items" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("A")
       listbox.add_item("B")
       listbox.item_count.should eq(2)
@@ -165,7 +160,7 @@ describe Quartz::ListBox do
 
   describe "#item_text" do
     it "returns the text at a valid index" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.add_item("İlk")
       listbox.item_text(0).should eq("İlk")
     end
@@ -176,7 +171,7 @@ describe Quartz::ListBox do
       called = false
       captured_id = 0
 
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       listbox.on_selection_changed do
         called = true
         captured_id = listbox.handle
@@ -189,7 +184,7 @@ describe Quartz::ListBox do
     end
 
     it "is nil-safe when no callback is registered" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       Quartz::ListBox._dispatch(listbox.handle)
     end
 
@@ -198,9 +193,9 @@ describe Quartz::ListBox do
     end
 
     it "dispatches to the correct listbox among many" do
-      l1 = create_test_listbox
-      l2 = create_test_listbox
-      l3 = create_test_listbox
+      l1 = WidgetFactory.listbox
+      l2 = WidgetFactory.listbox
+      l3 = WidgetFactory.listbox
 
       results = [] of Int32
 
@@ -221,7 +216,7 @@ describe Quartz::ListBox do
 
   describe "#on_selection_changed" do
     it "replaces the previous callback" do
-      listbox = create_test_listbox
+      listbox = WidgetFactory.listbox
       results = [] of String
 
       listbox.on_selection_changed { results << "first" }

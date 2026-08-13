@@ -14,7 +14,7 @@ module Quartz
   class Application
     @main_window : Window?
 
-    def self.run(&block : Application ->)
+    def self.run(& : Application ->)
       LibQuartz.quartz_init
       app = new
       yield app

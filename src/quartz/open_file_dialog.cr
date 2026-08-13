@@ -13,7 +13,7 @@ module Quartz
   # end
   # ```
   class OpenFileDialog < FileDialog
-    property multiselect : Bool = false
+    property? multiselect : Bool = false
 
     def show_dialog(owner : Window? = nil) : String?
       owner_id = owner ? owner.handle : -1
@@ -22,7 +22,7 @@ module Quartz
         filter.empty? ? Pointer(UInt8).null : filter.to_unsafe,
         initial_directory.empty? ? Pointer(UInt8).null : initial_directory.to_unsafe,
         default_ext.empty? ? Pointer(UInt8).null : default_ext.to_unsafe,
-        multiselect ? 1 : 0,
+        multiselect? ? 1 : 0,
         owner_id
       )
       ptr.null? ? nil : String.new(ptr)

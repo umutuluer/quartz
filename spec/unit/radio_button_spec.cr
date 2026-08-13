@@ -1,37 +1,28 @@
 require "../spec_helper"
 
-# Local shorthand around the shared WidgetFactory.
-private def create_test_radio(text = "Test", x = 0, y = 0, width = 120, height = 25, checked = false)
-  WidgetFactory.radio_button(text, x, y, width, height, checked: checked)
-end
-
-private def create_test_window(title = "Test Window", width = 400, height = 300)
-  WidgetFactory.window(title, width, height)
-end
-
 describe Quartz::RadioButton do
   describe "type hierarchy" do
     it "inherits from Control" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.should be_a(Quartz::Control)
     end
 
     it "is a RadioButton" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.should be_a(Quartz::RadioButton)
     end
   end
 
   describe "#handle" do
     it "returns a positive handle" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.handle.should be > 0
     end
 
     it "each radio button gets a unique handle" do
-      r1 = create_test_radio
-      r2 = create_test_radio
-      r3 = create_test_radio
+      r1 = WidgetFactory.radio_button
+      r2 = WidgetFactory.radio_button
+      r3 = WidgetFactory.radio_button
       handles = [r1.handle, r2.handle, r3.handle]
       handles.uniq.size.should eq(3)
     end
@@ -39,17 +30,17 @@ describe Quartz::RadioButton do
 
   describe "#checked" do
     it "defaults to false" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.checked.should be_false
     end
 
     it "can be initialised as checked" do
-      rb = create_test_radio(checked: true)
+      rb = WidgetFactory.radio_button(checked: true)
       rb.checked.should be_true
     end
 
     it "setter updates the checked state" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.checked = true
       rb.checked.should be_true
       rb.checked = false
@@ -57,7 +48,7 @@ describe Quartz::RadioButton do
     end
 
     it "idempotent setter does not raise" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.checked = true
       rb.checked = true
       rb.checked.should be_true
@@ -66,21 +57,28 @@ describe Quartz::RadioButton do
 
   describe "#text=" do
     it "accepts a new label" do
-      rb = create_test_radio("Option A")
+      rb = WidgetFactory.radio_button("Option A")
       rb.text = "Option B"
     end
 
     it "accepts Turkish characters" do
-      rb = create_test_radio("Test")
+      rb = WidgetFactory.radio_button("Test")
       rb.text = "Türkçe karakter: ğüşıöçĞÜŞİÖÇ"
     end
   end
 
   describe "#enabled=" do
     it "can be disabled and re-enabled" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.enabled = false
       rb.enabled = true
+    end
+  end
+
+  describe "#parent" do
+    it "is nil by default" do
+      rb = WidgetFactory.radio_button
+      rb.parent.should be_nil
     end
   end
 
@@ -89,7 +87,7 @@ describe Quartz::RadioButton do
       called = false
       captured_id = 0
 
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       rb.on_checked_changed do
         called = true
         captured_id = rb.handle
@@ -102,7 +100,7 @@ describe Quartz::RadioButton do
     end
 
     it "is nil-safe when no callback is registered" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       Quartz::RadioButton._dispatch(rb.handle)
     end
 
@@ -111,9 +109,9 @@ describe Quartz::RadioButton do
     end
 
     it "dispatches to the correct radio among many" do
-      r1 = create_test_radio
-      r2 = create_test_radio
-      r3 = create_test_radio
+      r1 = WidgetFactory.radio_button
+      r2 = WidgetFactory.radio_button
+      r3 = WidgetFactory.radio_button
 
       results = [] of Int32
 
@@ -134,7 +132,7 @@ describe Quartz::RadioButton do
 
   describe "#on_checked_changed" do
     it "replaces the previous callback" do
-      rb = create_test_radio
+      rb = WidgetFactory.radio_button
       results = [] of String
 
       rb.on_checked_changed { results << "first" }
@@ -147,9 +145,9 @@ describe Quartz::RadioButton do
 
   describe "radio exclusivity" do
     it "unchecks siblings when a radio is checked programmatically" do
-      window = create_test_window
-      rb1 = create_test_radio("A", checked: true)
-      rb2 = create_test_radio("B", checked: false)
+      window = WidgetFactory.window
+      rb1 = WidgetFactory.radio_button("A", checked: true)
+      rb2 = WidgetFactory.radio_button("B", checked: false)
 
       window.add_control(rb1)
       window.add_control(rb2)
@@ -164,11 +162,11 @@ describe Quartz::RadioButton do
     end
 
     it "fires callbacks for both radios when exclusivity triggers" do
-      window = create_test_window
+      window = WidgetFactory.window
       events = [] of {Int32, Bool}
 
-      rb1 = create_test_radio("A", checked: true)
-      rb2 = create_test_radio("B", checked: false)
+      rb1 = WidgetFactory.radio_button("A", checked: true)
+      rb2 = WidgetFactory.radio_button("B", checked: false)
 
       rb1.on_checked_changed { events << {1, rb1.checked} }
       rb2.on_checked_changed { events << {2, rb2.checked} }
@@ -187,11 +185,11 @@ describe Quartz::RadioButton do
     end
 
     it "does not affect radios in a different window" do
-      w1 = create_test_window("Win 1", 400, 300)
-      w2 = create_test_window("Win 2", 400, 300)
+      w1 = WidgetFactory.window("Win 1", 400, 300)
+      w2 = WidgetFactory.window("Win 2", 400, 300)
 
-      rb1 = create_test_radio("A", checked: true)
-      rb2 = create_test_radio("B", checked: true)
+      rb1 = WidgetFactory.radio_button("A", checked: true)
+      rb2 = WidgetFactory.radio_button("B", checked: true)
 
       w1.add_control(rb1)
       w2.add_control(rb2)
@@ -205,9 +203,9 @@ describe Quartz::RadioButton do
     end
 
     it "allows the group to be selectionless (checked = false)" do
-      window = create_test_window
-      rb1 = create_test_radio("A", checked: true)
-      rb2 = create_test_radio("B", checked: false)
+      window = WidgetFactory.window
+      rb1 = WidgetFactory.radio_button("A", checked: true)
+      rb2 = WidgetFactory.radio_button("B", checked: false)
 
       window.add_control(rb1)
       window.add_control(rb2)
@@ -219,11 +217,11 @@ describe Quartz::RadioButton do
     end
 
     it "does not fire callback when sibling checked= assigns same value" do
-      window = create_test_window
+      window = WidgetFactory.window
       events = [] of Int32
 
-      rb1 = create_test_radio("A", checked: false)
-      rb2 = create_test_radio("B", checked: false)
+      rb1 = WidgetFactory.radio_button("A", checked: false)
+      rb2 = WidgetFactory.radio_button("B", checked: false)
 
       rb1.on_checked_changed { events << 1 }
       rb2.on_checked_changed { events << 2 }
@@ -236,10 +234,10 @@ describe Quartz::RadioButton do
     end
 
     it "when parent-added checked radio wins over existing checked sibling" do
-      window = create_test_window
+      window = WidgetFactory.window
 
-      rb1 = create_test_radio("A", checked: true)
-      rb2 = create_test_radio("B", checked: true)
+      rb1 = WidgetFactory.radio_button("A", checked: true)
+      rb2 = WidgetFactory.radio_button("B", checked: true)
 
       window.add_control(rb1)
       window.add_control(rb2) # this triggers exclusivity via Crystal

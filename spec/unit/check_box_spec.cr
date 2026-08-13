@@ -1,33 +1,28 @@
 require "../spec_helper"
 
-# Local shorthand around the shared WidgetFactory.
-private def create_test_checkbox(text = "Test", x = 0, y = 0, width = 120, height = 25, checked = false)
-  WidgetFactory.check_box(text, x, y, width, height, checked: checked)
-end
-
 describe Quartz::CheckBox do
   describe "type hierarchy" do
     it "inherits from Control" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.should be_a(Quartz::Control)
     end
 
     it "is a CheckBox" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.should be_a(Quartz::CheckBox)
     end
   end
 
   describe "#handle" do
     it "returns a positive handle" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.handle.should be > 0
     end
 
     it "each checkbox gets a unique handle" do
-      c1 = create_test_checkbox
-      c2 = create_test_checkbox
-      c3 = create_test_checkbox
+      c1 = WidgetFactory.check_box
+      c2 = WidgetFactory.check_box
+      c3 = WidgetFactory.check_box
       handles = [c1.handle, c2.handle, c3.handle]
       handles.uniq.size.should eq(3)
     end
@@ -35,17 +30,17 @@ describe Quartz::CheckBox do
 
   describe "#checked" do
     it "defaults to false" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.checked.should be_false
     end
 
     it "can be initialised as checked" do
-      cb = create_test_checkbox(checked: true)
+      cb = WidgetFactory.check_box(checked: true)
       cb.checked.should be_true
     end
 
     it "setter updates the checked state" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.checked = true
       cb.checked.should be_true
       cb.checked = false
@@ -53,7 +48,7 @@ describe Quartz::CheckBox do
     end
 
     it "idempotent setter does not raise" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.checked = true
       cb.checked = true
       cb.checked.should be_true
@@ -66,30 +61,30 @@ describe Quartz::CheckBox do
 
   describe "#text=" do
     it "accepts a new label" do
-      cb = create_test_checkbox("Enable")
+      cb = WidgetFactory.check_box("Enable")
       # No getter in V1, just verify it doesn't raise
       cb.text = "Disable"
     end
 
     it "accepts Turkish characters" do
-      cb = create_test_checkbox("Test")
+      cb = WidgetFactory.check_box("Test")
       cb.text = "Türkçe karakter: ğüşıöçĞÜŞİÖÇ"
     end
 
     it "accepts empty string" do
-      cb = create_test_checkbox("Test")
+      cb = WidgetFactory.check_box("Test")
       cb.text = ""
     end
   end
 
   describe "#enabled=" do
     it "can be disabled" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.enabled = false
     end
 
     it "can be re-enabled" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.enabled = false
       cb.enabled = true
     end
@@ -100,7 +95,7 @@ describe Quartz::CheckBox do
       called = false
       captured_id = 0
 
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       cb.on_checked_changed do
         called = true
         captured_id = cb.handle
@@ -113,7 +108,7 @@ describe Quartz::CheckBox do
     end
 
     it "is nil-safe when no callback is registered" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       Quartz::CheckBox._dispatch(cb.handle)
     end
 
@@ -122,9 +117,9 @@ describe Quartz::CheckBox do
     end
 
     it "dispatches to the correct checkbox among many" do
-      c1 = create_test_checkbox
-      c2 = create_test_checkbox
-      c3 = create_test_checkbox
+      c1 = WidgetFactory.check_box
+      c2 = WidgetFactory.check_box
+      c3 = WidgetFactory.check_box
 
       results = [] of Int32
 
@@ -145,7 +140,7 @@ describe Quartz::CheckBox do
 
   describe "#on_checked_changed" do
     it "replaces the previous callback" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       results = [] of String
 
       cb.on_checked_changed { results << "first" }
@@ -156,7 +151,7 @@ describe Quartz::CheckBox do
     end
 
     it "fires when checked changes programmatically" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       call_count = 0
 
       cb.on_checked_changed { call_count += 1 }
@@ -169,7 +164,7 @@ describe Quartz::CheckBox do
     end
 
     it "does not fire when checked is set to same value" do
-      cb = create_test_checkbox
+      cb = WidgetFactory.check_box
       call_count = 0
 
       cb.on_checked_changed { call_count += 1 }
