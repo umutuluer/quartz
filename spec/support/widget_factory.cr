@@ -25,6 +25,10 @@ module WidgetFactory
     Quartz::ListBox.new(x, y, width, height)
   end
 
+  def self.combobox(x = 0, y = 0, width = 150, height = 24, editable = false)
+    Quartz::ComboBox.new(x, y, width, height, editable: editable)
+  end
+
   def self.check_box(text = "Test", x = 0, y = 0, width = 120, height = 25, checked = false)
     Quartz::CheckBox.new(text, x, y, width, height, checked: checked)
   end

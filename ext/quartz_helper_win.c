@@ -124,6 +124,31 @@ static void set_toggle_callback(int32_t widget_id, QuartzCallback callback) {
     }
 }
 
+// Text callback registry: widget_id → QuartzCallback (for ComboBox edit text changes)
+static CallbackEntry *g_text_callback_head = NULL;
+
+static CallbackEntry* find_text_callback(int32_t widget_id) {
+    CallbackEntry *e = g_text_callback_head;
+    while (e) {
+        if (e->widget_id == widget_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+static void set_text_callback(int32_t widget_id, QuartzCallback callback) {
+    CallbackEntry *e = find_text_callback(widget_id);
+    if (e) {
+        e->callback = callback;
+    } else if (callback) {
+        e = (CallbackEntry*)malloc(sizeof(CallbackEntry));
+        e->widget_id = widget_id;
+        e->callback  = callback;
+        e->next      = g_text_callback_head;
+        g_text_callback_head = e;
+    }
+}
+
 // Widget ID counter (thread-safe via InterlockedIncrement)
 static LONG g_next_id = 1;
 
@@ -148,6 +173,42 @@ static HWND lookup_hwnd(int32_t widget_id) {
     HwndEntry *e = g_hwnd_head;
     while (e) {
         if (e->widget_id == widget_id) return e->hwnd;
+        e = e->next;
+    }
+    return NULL;
+}
+
+// ComboBox widget registry: widget_id → HWND, plus a reverse HWND → widget_id
+// lookup so WM_COMMAND can tell ComboBox notifications apart by handle.
+typedef struct ComboBoxEntry {
+    int32_t widget_id;
+    HWND    hwnd;
+    struct ComboBoxEntry *next;
+} ComboBoxEntry;
+
+static ComboBoxEntry *g_combobox_map = NULL;
+
+static void register_combobox(int32_t widget_id, HWND hwnd) {
+    ComboBoxEntry *e = (ComboBoxEntry*)malloc(sizeof(ComboBoxEntry));
+    e->widget_id = widget_id;
+    e->hwnd      = hwnd;
+    e->next      = g_combobox_map;
+    g_combobox_map = e;
+}
+
+static ComboBoxEntry* find_combobox_widget(int32_t widget_id) {
+    ComboBoxEntry *e = g_combobox_map;
+    while (e) {
+        if (e->widget_id == widget_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+static ComboBoxEntry* find_combobox_by_hwnd(HWND hwnd) {
+    ComboBoxEntry *e = g_combobox_map;
+    while (e) {
+        if (e->hwnd == hwnd) return e;
         e = e->next;
     }
     return NULL;
@@ -225,6 +286,24 @@ static LRESULT CALLBACK quartz_wnd_proc(HWND hwnd, UINT msg,
             CallbackEntry *e = find_selection_callback(widget_id);
             if (e && e->callback) {
                 e->callback(widget_id);
+            }
+        } else if (notification == CBN_SELCHANGE) {
+            // ComboBox selection changed — identify the widget via its HWND
+            ComboBoxEntry *ce = find_combobox_by_hwnd((HWND)lParam);
+            if (ce) {
+                CallbackEntry *e = find_selection_callback(ce->widget_id);
+                if (e && e->callback) {
+                    e->callback(ce->widget_id);
+                }
+            }
+        } else if (notification == CBN_EDITCHANGE) {
+            // ComboBox edit text changed
+            ComboBoxEntry *ce = find_combobox_by_hwnd((HWND)lParam);
+            if (ce) {
+                CallbackEntry *e = find_text_callback(ce->widget_id);
+                if (e && e->callback) {
+                    e->callback(ce->widget_id);
+                }
             }
         } else if (notification == BN_CLICKED) {
             // Check toggle callback first (for CheckBox / RadioButton)
@@ -597,6 +676,146 @@ const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index) {
 void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
     if (callback) {
         set_selection_callback(widget_id, callback);
+    }
+}
+
+// ── ComboBox ───────────────────────────────────────────────────────────
+
+int32_t quartz_combobox_create(int32_t x, int32_t y,
+                               int32_t w, int32_t h,
+                               int32_t editable) {
+    HINSTANCE hInstance = GetModuleHandleA(NULL);
+    int32_t wid = InterlockedIncrement(&g_next_id);
+
+    // Editable combo boxes get an edit control (CBS_DROPDOWN); non-editable
+    // ones are selection-only (CBS_DROPDOWNLIST).
+    DWORD style = WS_CHILD | WS_VISIBLE | WS_VSCROLL;
+    style |= editable ? CBS_DROPDOWN : CBS_DROPDOWNLIST;
+
+    HWND hwnd = CreateWindowExA(
+        0,
+        "COMBOBOX",
+        "",
+        style,
+        x, y, (int)w, (int)h,
+        NULL,                    // parent set later via set_parent
+        (HMENU)(uintptr_t)wid,   // control ID = widget_id
+        hInstance,
+        NULL
+    );
+
+    SetPropA(hwnd, PROP_WIDGET_ID, (HANDLE)(uintptr_t)wid);
+    register_hwnd(wid, hwnd);
+    register_combobox(wid, hwnd);
+
+    return wid;
+}
+
+void quartz_combobox_add_item(int32_t widget_id, const char* text) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        SendMessageA(ce->hwnd, CB_ADDSTRING, 0, (LPARAM)text);
+    }
+}
+
+void quartz_combobox_remove_item(int32_t widget_id, int32_t index) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        SendMessageA(ce->hwnd, CB_DELETESTRING, (WPARAM)index, 0);
+    }
+}
+
+void quartz_combobox_clear(int32_t widget_id) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        SendMessageA(ce->hwnd, CB_RESETCONTENT, 0, 0);
+    }
+}
+
+int32_t quartz_combobox_get_item_count(int32_t widget_id) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        LRESULT result = SendMessageA(ce->hwnd, CB_GETCOUNT, 0, 0);
+        return (result == CB_ERR) ? 0 : (int32_t)result;
+    }
+    return 0;
+}
+
+const char* quartz_combobox_get_item_text(int32_t widget_id, int32_t index) {
+    static char buffer[4096];
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        LRESULT len = SendMessageA(ce->hwnd, CB_GETLBTEXTLEN, (WPARAM)index, 0);
+        if (len > 0 && len < (LRESULT)sizeof(buffer)) {
+            SendMessageA(ce->hwnd, CB_GETLBTEXT, (WPARAM)index, (LPARAM)buffer);
+            return buffer;
+        }
+    }
+    return "";
+}
+
+int32_t quartz_combobox_get_selected_index(int32_t widget_id) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        LRESULT result = SendMessageA(ce->hwnd, CB_GETCURSEL, 0, 0);
+        return (result == CB_ERR) ? -1 : (int32_t)result;
+    }
+    return -1;
+}
+
+void quartz_combobox_set_selected_index(int32_t widget_id, int32_t index) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        SendMessageA(ce->hwnd, CB_SETCURSEL, (WPARAM)index, 0);
+    }
+}
+
+const char* quartz_combobox_get_text(int32_t widget_id) {
+    static char buffer[4096];
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        SendMessageA(ce->hwnd, WM_GETTEXT, (WPARAM)sizeof(buffer), (LPARAM)buffer);
+        return buffer;
+    }
+    return "";
+}
+
+void quartz_combobox_set_text(int32_t widget_id, const char* text) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        // WM_SETTEXT writes the edit-control text on editable (CBS_DROPDOWN)
+        // combo boxes. On selection-only (CBS_DROPDOWNLIST) combo boxes the
+        // text is owned by the selection, so this is a documented no-op that
+        // must not change the selection.
+        SendMessageA(ce->hwnd, WM_SETTEXT, 0, (LPARAM)text);
+    }
+}
+
+int32_t quartz_combobox_get_dropped_down(int32_t widget_id) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        return (int32_t)SendMessageA(ce->hwnd, CB_GETDROPPEDSTATE, 0, 0);
+    }
+    return 0;
+}
+
+void quartz_combobox_set_dropped_down(int32_t widget_id, int32_t dropped) {
+    ComboBoxEntry *ce = find_combobox_widget(widget_id);
+    if (ce && ce->hwnd) {
+        SendMessageA(ce->hwnd, CB_SHOWDROPDOWN,
+                     (WPARAM)(dropped ? TRUE : FALSE), 0);
+    }
+}
+
+void quartz_combobox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        set_selection_callback(widget_id, callback);
+    }
+}
+
+void quartz_combobox_set_text_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        set_text_callback(widget_id, callback);
     }
 }
 

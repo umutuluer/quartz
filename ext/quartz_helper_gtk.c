@@ -39,6 +39,9 @@ static GHashTable *change_callback_map = NULL;
 // Selection callback registry (for ListBox selection changes)
 static GHashTable *selection_callback_map = NULL;
 
+// Text change callback registry (for ComboBox entry text changes)
+static GHashTable *g_text_callback_map = NULL;
+
 // Toggle change callback registry (for CheckBox / RadioButton checked changes)
 static GHashTable *toggle_callback_map = NULL;
 
@@ -63,6 +66,7 @@ static void ensure_init(void) {
         callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         change_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         selection_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        g_text_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         toggle_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         radio_group_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     }
@@ -100,6 +104,24 @@ static void on_entry_changed(GtkEditable *editable, gpointer user_data) {
 static void on_listbox_selection_changed(GtkTreeSelection *selection, gpointer user_data) {
     int32_t wid = GPOINTER_TO_INT(user_data);
     QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(selection_callback_map,
+                                                            GINT_TO_POINTER(wid));
+    if (cb) {
+        cb(wid);
+    }
+}
+
+static void on_combobox_selection_changed(GtkComboBox *widget, gpointer user_data) {
+    int32_t wid = GPOINTER_TO_INT(user_data);
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(selection_callback_map,
+                                                            GINT_TO_POINTER(wid));
+    if (cb) {
+        cb(wid);
+    }
+}
+
+static void on_combobox_text_changed(GtkEntry *entry, gpointer user_data) {
+    int32_t wid = GPOINTER_TO_INT(user_data);
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(g_text_callback_map,
                                                             GINT_TO_POINTER(wid));
     if (cb) {
         cb(wid);
@@ -560,6 +582,190 @@ void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback cal
         g_signal_connect(selection, "changed",
                          G_CALLBACK(on_listbox_selection_changed),
                          GINT_TO_POINTER(widget_id));
+    }
+}
+
+// ── ComboBox ───────────────────────────────────────────────────────────
+
+int32_t quartz_combobox_create(int32_t x, int32_t y, int32_t w, int32_t h,
+                                int32_t editable) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    GtkWidget *combo = editable
+        ? gtk_combo_box_text_new_with_entry()
+        : gtk_combo_box_text_new();
+    gtk_widget_set_size_request(combo, w, h);
+
+    g_hash_table_insert(widget_map, GINT_TO_POINTER(wid), combo);
+
+    // Store position so quartz_widget_set_parent can use it
+    WidgetPos *pos = malloc(sizeof(WidgetPos));
+    pos->x = x;
+    pos->y = y;
+    g_hash_table_insert(position_map, GINT_TO_POINTER(wid), pos);
+
+    // Remember whether the entry is editable (used by get/set_text)
+    g_object_set_data(G_OBJECT(combo), "editable", GINT_TO_POINTER(editable));
+
+    // Wire up "changed" → selection callback (fires on active item changes)
+    g_signal_connect(combo, "changed",
+                     G_CALLBACK(on_combobox_selection_changed),
+                     GINT_TO_POINTER(wid));
+
+    // For editable combo boxes, also forward entry text changes
+    if (editable) {
+        GtkWidget *entry = gtk_bin_get_child(GTK_BIN(combo));
+        g_signal_connect(entry, "changed",
+                         G_CALLBACK(on_combobox_text_changed),
+                         GINT_TO_POINTER(wid));
+    }
+
+    return wid;
+}
+
+// Helper: get the GtkComboBox widget from a ComboBox widget_id
+static GtkWidget* get_combobox_widget(int32_t widget_id) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    if (widget && GTK_IS_COMBO_BOX(widget)) return widget;
+    return NULL;
+}
+
+void quartz_combobox_add_item(int32_t widget_id, const char* text) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo || !GTK_IS_COMBO_BOX_TEXT(combo)) return;
+
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo), text);
+}
+
+void quartz_combobox_remove_item(int32_t widget_id, int32_t index) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo || !GTK_IS_COMBO_BOX_TEXT(combo)) return;
+
+    gtk_combo_box_text_remove(GTK_COMBO_BOX_TEXT(combo), index);
+}
+
+void quartz_combobox_clear(int32_t widget_id) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (combo && GTK_IS_COMBO_BOX_TEXT(combo)) {
+        gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(combo));
+    }
+}
+
+int32_t quartz_combobox_get_item_count(int32_t widget_id) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo) return 0;
+
+    GtkTreeModel *model = gtk_combo_box_get_model(GTK_COMBO_BOX(combo));
+    return model ? gtk_tree_model_iter_n_children(model, NULL) : 0;
+}
+
+const char* quartz_combobox_get_item_text(int32_t widget_id, int32_t index) {
+    static char buffer[4096];
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo) return "";
+
+    GtkTreeModel *model = gtk_combo_box_get_model(GTK_COMBO_BOX(combo));
+    GtkTreeIter iter;
+    if (gtk_tree_model_iter_nth_child(model, &iter, NULL, index)) {
+        gchar *text = NULL;
+        gtk_tree_model_get(model, &iter, 0, &text, -1);
+        if (text) {
+            g_strlcpy(buffer, text, sizeof(buffer));
+            g_free(text);
+            return buffer;
+        }
+    }
+    return "";
+}
+
+int32_t quartz_combobox_get_selected_index(int32_t widget_id) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo) return -1;
+
+    return (int32_t)gtk_combo_box_get_active(GTK_COMBO_BOX(combo));
+}
+
+void quartz_combobox_set_selected_index(int32_t widget_id, int32_t index) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (combo) {
+        gtk_combo_box_set_active(GTK_COMBO_BOX(combo), index);
+    }
+}
+
+const char* quartz_combobox_get_text(int32_t widget_id) {
+    static char buffer[4096];
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo) return "";
+
+    if (GPOINTER_TO_INT(g_object_get_data(G_OBJECT(combo), "editable"))) {
+        GtkWidget *entry = gtk_bin_get_child(GTK_BIN(combo));
+        if (entry && GTK_IS_ENTRY(entry)) {
+            const gchar *text = gtk_entry_get_text(GTK_ENTRY(entry));
+            if (text) {
+                g_strlcpy(buffer, text, sizeof(buffer));
+                return buffer;
+            }
+        }
+    } else {
+        gchar *text = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(combo));
+        if (text) {
+            g_strlcpy(buffer, text, sizeof(buffer));
+            g_free(text);
+            return buffer;
+        }
+    }
+    return "";
+}
+
+void quartz_combobox_set_text(int32_t widget_id, const char* text) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo) return;
+
+    // Setting free text only makes sense for editable combo boxes; on
+    // read-only ones this would fight with the active selection.
+    if (!GPOINTER_TO_INT(g_object_get_data(G_OBJECT(combo), "editable"))) return;
+
+    GtkWidget *entry = gtk_bin_get_child(GTK_BIN(combo));
+    if (entry && GTK_IS_ENTRY(entry)) {
+        gtk_entry_set_text(GTK_ENTRY(entry), text);
+    }
+}
+
+int32_t quartz_combobox_get_dropped_down(int32_t widget_id) {
+    // GTK 3 has no public API to query whether the popup is currently shown,
+    // so we report 0 (not dropped down) unconditionally for this backend.
+    (void)widget_id;
+    return 0;
+}
+
+void quartz_combobox_set_dropped_down(int32_t widget_id, int32_t dropped) {
+    GtkWidget *combo = get_combobox_widget(widget_id);
+    if (!combo) return;
+
+    if (dropped) {
+        gtk_combo_box_popup(GTK_COMBO_BOX(combo));
+    } else {
+        gtk_combo_box_popdown(GTK_COMBO_BOX(combo));
+    }
+}
+
+void quartz_combobox_set_selection_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        g_hash_table_insert(selection_callback_map, GINT_TO_POINTER(widget_id),
+                            (gpointer)callback);
+    } else {
+        g_hash_table_remove(selection_callback_map, GINT_TO_POINTER(widget_id));
+    }
+}
+
+void quartz_combobox_set_text_callback(int32_t widget_id, QuartzCallback callback) {
+    if (callback) {
+        g_hash_table_insert(g_text_callback_map, GINT_TO_POINTER(widget_id),
+                            (gpointer)callback);
+    } else {
+        g_hash_table_remove(g_text_callback_map, GINT_TO_POINTER(widget_id));
     }
 }
 

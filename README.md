@@ -159,6 +159,25 @@ shards build
 | `listbox.item_text(index)`                     | Gets the text at given index   |
 | `listbox.on_selection_changed { }`             | Registers selection change     |
 
+### ComboBox
+
+| Method                                          | Description                          |
+| ----------------------------------------------- | ------------------------------------ |
+| `ComboBox.new(x, y, w, h, editable: false)`    | Creates a dropdown (editable = text input) |
+| `combo.add_item("Item")`                       | Adds an item                          |
+| `combo.remove_item(index)`                     | Removes the item at index             |
+| `combo.clear`                                  | Removes all items                     |
+| `combo.item_count`                             | Returns the number of items           |
+| `combo.item_text(index)`                       | Gets the text at given index          |
+| `combo.selected_index`                         | Gets / sets selected index            |
+| `combo.selected_text`                          | Gets selected item text or nil        |
+| `combo.text`                                   | Gets the current text                 |
+| `combo.text = "..."`                           | Sets the current text                 |
+| `combo.dropped_down?`                          | Whether dropdown is open              |
+| `combo.dropped_down = true`                    | Opens / closes the dropdown           |
+| `combo.on_selection_changed { }`               | Registers selection change            |
+| `combo.on_text_changed { }`                    | Registers edit-text change            |
+
 ### CheckBox
 
 | Method                                             | Description                       |
@@ -216,6 +235,15 @@ crystal build examples/listbox_example.cr -o bin/listbox_example
 
 Example source: [`examples/listbox_example.cr`](examples/listbox_example.cr)
 
+Run the ComboBox demo:
+
+```bash
+crystal build examples/combobox_example.cr -o bin/combobox_example
+./bin/combobox_example
+```
+
+Example source: [`examples/combobox_example.cr`](examples/combobox_example.cr)
+
 Run the CheckBox demo:
 
 ```bash
@@ -242,7 +270,7 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 ┌──────────────────────────────────────────┐
 │            Crystal (src/)                 │
 │  Application · Window · Button · Label    │
-│       TextBox · ListBox                     │
+│       TextBox · ListBox · ComboBox          │
 │       CheckBox · RadioButton               │
 │                  │                        │
 │            lib_quartz.cr                  │
@@ -269,7 +297,7 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 - [x] TextBox / input controls
 - [x] ListBox
 - [x] CheckBox, RadioButton
-- [ ] ComboBox / DropDown
+- [x] ComboBox / DropDown
 - [ ] File dialogs
 - [ ] Layout managers (Flow, Grid, Stack)
 - [ ] Menu bar & context menus

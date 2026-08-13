@@ -85,6 +85,23 @@ lib LibQuartz
   fun quartz_listbox_get_item_text(widget_id : Int32, index : Int32) : LibC::Char*
   fun quartz_listbox_set_selection_callback(widget_id : Int32, callback : QuartzCallback) : Void
 
+  # --- ComboBox-specific ---
+  fun quartz_combobox_create(x : Int32, y : Int32,
+                             w : Int32, h : Int32, editable : Int32) : Int32
+  fun quartz_combobox_add_item(wid : Int32, text : LibC::Char*) : Void
+  fun quartz_combobox_remove_item(wid : Int32, index : Int32) : Void
+  fun quartz_combobox_clear(wid : Int32) : Void
+  fun quartz_combobox_get_item_count(wid : Int32) : Int32
+  fun quartz_combobox_get_item_text(wid : Int32, index : Int32) : LibC::Char*
+  fun quartz_combobox_get_selected_index(wid : Int32) : Int32
+  fun quartz_combobox_set_selected_index(wid : Int32, index : Int32) : Void
+  fun quartz_combobox_get_text(wid : Int32) : LibC::Char*
+  fun quartz_combobox_set_text(wid : Int32, text : LibC::Char*) : Void
+  fun quartz_combobox_get_dropped_down(wid : Int32) : Int32
+  fun quartz_combobox_set_dropped_down(wid : Int32, dropped : Int32) : Void
+  fun quartz_combobox_set_selection_callback(wid : Int32, cb : QuartzCallback) : Void
+  fun quartz_combobox_set_text_callback(wid : Int32, cb : QuartzCallback) : Void
+
   # --- Toggle (CheckBox / RadioButton) ---
   fun quartz_checkbox_create(text : LibC::Char*, x : Int32, y : Int32,
                              width : Int32, height : Int32) : Int32

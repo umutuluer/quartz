@@ -164,6 +164,51 @@ static int32_t next_widget_id(void) {
 @end
 
 // ---------------------------------------------------------------------------
+// Delegate for NSComboBox selection/text notifications (ComboBox)
+// A single instance handles both channels; each notification method
+// dispatches through its own offset key in callbackMap:
+//   +400000 → selection changed     +500000 → text changed
+// (isTextOnlyCallback is kept for parity with the spec; no gating is needed
+// because each method already knows which event fired.)
+// ---------------------------------------------------------------------------
+@interface ComboBoxDelegate : NSObject <NSComboBoxDelegate>
+@property (nonatomic, assign) int32_t widgetId;
+@property (nonatomic, assign) BOOL isTextOnlyCallback;
+- (instancetype)initWithWidgetId:(int32_t)widgetId;
+@end
+
+@implementation ComboBoxDelegate
+- (instancetype)initWithWidgetId:(int32_t)widgetId {
+    self = [super init];
+    if (self) {
+        _widgetId = widgetId;
+        _isTextOnlyCallback = NO;
+    }
+    return self;
+}
+
+- (void)comboBoxSelectionDidChange:(NSNotification *)notification {
+    NSValue *val = callbackMap[@(self.widgetId + 400000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) {
+            cb(self.widgetId);
+        }
+    }
+}
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+    NSValue *val = callbackMap[@(self.widgetId + 500000)];
+    if (val) {
+        QuartzCallback cb = (QuartzCallback)[val pointerValue];
+        if (cb) {
+            cb(self.widgetId);
+        }
+    }
+}
+@end
+
+// ---------------------------------------------------------------------------
 // NSApplication delegate
 // ---------------------------------------------------------------------------
 @interface AppDelegate : NSObject <NSApplicationDelegate>
@@ -615,6 +660,136 @@ void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback cal
         callbackMap[@(widget_id + 200000)] = [NSValue valueWithPointer:(void *)callback];
     } else {
         [callbackMap removeObjectForKey:@(widget_id + 200000)];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ComboBox
+// ---------------------------------------------------------------------------
+int32_t quartz_combobox_create(int32_t x, int32_t y, int32_t w, int32_t h,
+                               int32_t editable) {
+    int32_t wid = next_widget_id();
+
+    NSRect frame = NSMakeRect(x, y, w, h);
+    NSComboBox *comboBox = [[NSComboBox alloc] initWithFrame:frame];
+
+    [comboBox setEditable:(editable ? YES : NO)];
+    [comboBox setUsesDataSource:NO]; // simple string-based items
+    [comboBox setAutoresizingMask:NSViewNotSizable];
+
+    // Single delegate dispatches both selection (+400000) and text (+500000)
+    ComboBoxDelegate *delegate = [[ComboBoxDelegate alloc] initWithWidgetId:wid];
+    [comboBox setDelegate:delegate];
+
+    // Retain the delegate so it stays alive (comboBox references it weakly)
+    objc_setAssociatedObject(comboBox, "comboBoxDelegate", delegate,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    widgetMap[@(wid)] = comboBox;
+    return wid;
+}
+
+static NSComboBox* get_combobox(int32_t widget_id) {
+    id obj = widgetMap[@(widget_id)];
+    if ([obj isKindOfClass:[NSComboBox class]]) {
+        return (NSComboBox *)obj;
+    }
+    return nil;
+}
+
+void quartz_combobox_add_item(int32_t wid, const char* text) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox) {
+        [comboBox addItemWithObjectValue:[NSString stringWithUTF8String:text]];
+    }
+}
+
+void quartz_combobox_remove_item(int32_t wid, int32_t index) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox && index >= 0 && index < (int32_t)[comboBox numberOfItems]) {
+        [comboBox removeItemAtIndex:index];
+    }
+}
+
+void quartz_combobox_clear(int32_t wid) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox) {
+        [comboBox removeAllItems];
+    }
+}
+
+int32_t quartz_combobox_get_item_count(int32_t wid) {
+    NSComboBox *comboBox = get_combobox(wid);
+    return comboBox ? (int32_t)[comboBox numberOfItems] : 0;
+}
+
+const char* quartz_combobox_get_item_text(int32_t wid, int32_t index) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox && index >= 0 && index < (int32_t)[comboBox numberOfItems]) {
+        return [[comboBox itemObjectValueAtIndex:index] UTF8String];
+    }
+    return "";
+}
+
+int32_t quartz_combobox_get_selected_index(int32_t wid) {
+    NSComboBox *comboBox = get_combobox(wid);
+    return comboBox ? (int32_t)[comboBox indexOfSelectedItem] : -1;
+}
+
+void quartz_combobox_set_selected_index(int32_t wid, int32_t index) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox && index >= -1 && index < (int32_t)[comboBox numberOfItems]) {
+        if (index >= 0) {
+            [comboBox selectItemAtIndex:index];
+        } else {
+            NSInteger current = [comboBox indexOfSelectedItem];
+            if (current >= 0) {
+                [comboBox deselectItemAtIndex:current];
+            }
+        }
+    }
+}
+
+const char* quartz_combobox_get_text(int32_t wid) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox) {
+        return [[comboBox stringValue] UTF8String];
+    }
+    return "";
+}
+
+void quartz_combobox_set_text(int32_t wid, const char* text) {
+    NSComboBox *comboBox = get_combobox(wid);
+    if (comboBox) {
+        [comboBox setStringValue:[NSString stringWithUTF8String:text]];
+    }
+}
+
+// macOS (AppKit) exposes no public API to read or write the popup's open
+// state, so these are stubs returning 0 (Win32/Qt backends support them).
+int32_t quartz_combobox_get_dropped_down(int32_t wid) {
+    (void)wid;
+    return 0;
+}
+
+void quartz_combobox_set_dropped_down(int32_t wid, int32_t dropped) {
+    (void)wid;
+    (void)dropped;
+}
+
+void quartz_combobox_set_selection_callback(int32_t wid, QuartzCallback cb) {
+    if (cb) {
+        callbackMap[@(wid + 400000)] = [NSValue valueWithPointer:(void *)cb];
+    } else {
+        [callbackMap removeObjectForKey:@(wid + 400000)];
+    }
+}
+
+void quartz_combobox_set_text_callback(int32_t wid, QuartzCallback cb) {
+    if (cb) {
+        callbackMap[@(wid + 500000)] = [NSValue valueWithPointer:(void *)cb];
+    } else {
+        [callbackMap removeObjectForKey:@(wid + 500000)];
     }
 }
 

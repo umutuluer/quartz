@@ -65,6 +65,22 @@ int32_t quartz_listbox_get_item_count(int32_t widget_id);
 const char* quartz_listbox_get_item_text(int32_t widget_id, int32_t index);
 void    quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback callback);
 
+// --- ComboBox-specific ---
+int32_t quartz_combobox_create(int32_t x, int32_t y, int32_t w, int32_t h, int32_t editable);
+void    quartz_combobox_add_item(int32_t wid, const char* text);
+void    quartz_combobox_remove_item(int32_t wid, int32_t index);
+void    quartz_combobox_clear(int32_t wid);
+int32_t quartz_combobox_get_item_count(int32_t wid);
+const char* quartz_combobox_get_item_text(int32_t wid, int32_t index);
+int32_t quartz_combobox_get_selected_index(int32_t wid);
+void    quartz_combobox_set_selected_index(int32_t wid, int32_t index);
+const char* quartz_combobox_get_text(int32_t wid);
+void    quartz_combobox_set_text(int32_t wid, const char* text);
+int32_t quartz_combobox_get_dropped_down(int32_t wid);
+void    quartz_combobox_set_dropped_down(int32_t wid, int32_t dropped);
+void    quartz_combobox_set_selection_callback(int32_t wid, QuartzCallback cb);
+void    quartz_combobox_set_text_callback(int32_t wid, QuartzCallback cb);
+
 // --- Toggle (CheckBox / RadioButton) ---
 int32_t quartz_checkbox_create(const char* text, int32_t x, int32_t y,
                                 int32_t width, int32_t height);

@@ -22,6 +22,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QComboBox>
 #include <QAbstractButton>
 #include <QMap>
 #include <QAtomicInt>
@@ -48,6 +49,9 @@ static QMap<int32_t, QuartzCallback> *g_change_callbacks = nullptr;
 // Selection callback registry (for ListBox selection changes)
 static QMap<int32_t, QuartzCallback> *g_selection_callbacks = nullptr;
 
+// Text callback registry (for ComboBox text changes)
+static QMap<int32_t, QuartzCallback> *g_text_callbacks = nullptr;
+
 // Toggle change callback registry (for CheckBox / RadioButton)
 static QMap<int32_t, QuartzCallback> *g_toggle_callbacks = nullptr;
 
@@ -60,6 +64,7 @@ void ensure_init() {
         g_callbacks = new QMap<int32_t, QuartzCallback>();
         g_change_callbacks = new QMap<int32_t, QuartzCallback>();
         g_selection_callbacks = new QMap<int32_t, QuartzCallback>();
+        g_text_callbacks = new QMap<int32_t, QuartzCallback>();
         g_toggle_callbacks = new QMap<int32_t, QuartzCallback>();
     }
 }
@@ -413,6 +418,157 @@ void quartz_listbox_set_selection_callback(int32_t widget_id, QuartzCallback cal
                 if (cb) cb(widget_id);
             }
         });
+    }
+}
+
+// ── ComboBox ───────────────────────────────────────────────────────────
+
+int32_t quartz_combobox_create(int32_t x, int32_t y,
+                               int32_t w, int32_t h, int32_t editable) {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QComboBox *combo = new QComboBox();
+    combo->setEditable(editable ? true : false);
+    combo->setGeometry(x, y, w, h);
+
+    QObject::connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     [wid](int /*index*/) {
+                         if (g_selection_callbacks->contains(wid)) {
+                             QuartzCallback cb = g_selection_callbacks->value(wid);
+                             if (cb) cb(wid);
+                         }
+                     });
+    QObject::connect(combo, &QComboBox::currentTextChanged,
+                     [wid](const QString & /*text*/) {
+                         if (g_text_callbacks->contains(wid)) {
+                             QuartzCallback cb = g_text_callbacks->value(wid);
+                             if (cb) cb(wid);
+                         }
+                     });
+
+    (*g_widgets)[wid] = combo;
+    return wid;
+}
+
+void quartz_combobox_add_item(int32_t wid, const char* text) {
+    if (!g_widgets->contains(wid)) return;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        combo->addItem(QString::fromUtf8(text));
+    }
+}
+
+void quartz_combobox_remove_item(int32_t wid, int32_t index) {
+    if (!g_widgets->contains(wid)) return;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        if (index >= 0 && index < combo->count()) {
+            combo->removeItem(index);
+        }
+    }
+}
+
+void quartz_combobox_clear(int32_t wid) {
+    if (!g_widgets->contains(wid)) return;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        combo->clear();
+    }
+}
+
+int32_t quartz_combobox_get_item_count(int32_t wid) {
+    if (!g_widgets->contains(wid)) return 0;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        return combo->count();
+    }
+    return 0;
+}
+
+const char* quartz_combobox_get_item_text(int32_t wid, int32_t index) {
+    static QByteArray buffer;
+    if (!g_widgets->contains(wid)) return "";
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        if (index >= 0 && index < combo->count()) {
+            buffer = combo->itemText(index).toUtf8();
+            return buffer.constData();
+        }
+    }
+    return "";
+}
+
+int32_t quartz_combobox_get_selected_index(int32_t wid) {
+    if (!g_widgets->contains(wid)) return -1;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        return combo->currentIndex();
+    }
+    return -1;
+}
+
+void quartz_combobox_set_selected_index(int32_t wid, int32_t index) {
+    if (!g_widgets->contains(wid)) return;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        combo->setCurrentIndex(index);
+    }
+}
+
+const char* quartz_combobox_get_text(int32_t wid) {
+    static QByteArray buffer;
+    if (!g_widgets->contains(wid)) return "";
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        buffer = combo->currentText().toUtf8();
+        return buffer.constData();
+    }
+    return "";
+}
+
+void quartz_combobox_set_text(int32_t wid, const char* text) {
+    if (!g_widgets->contains(wid)) return;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        combo->setEditText(QString::fromUtf8(text));
+    }
+}
+
+int32_t quartz_combobox_get_dropped_down(int32_t wid) {
+    if (!g_widgets->contains(wid)) return 0;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        return combo->view()->isVisible() ? 1 : 0;
+    }
+    return 0;
+}
+
+void quartz_combobox_set_dropped_down(int32_t wid, int32_t dropped) {
+    if (!g_widgets->contains(wid)) return;
+    QWidget *widget = g_widgets->value(wid);
+    if (QComboBox *combo = qobject_cast<QComboBox*>(widget)) {
+        if (dropped) {
+            combo->showPopup();
+        } else {
+            combo->hidePopup();
+        }
+    }
+}
+
+void quartz_combobox_set_selection_callback(int32_t wid, QuartzCallback cb) {
+    if (cb) {
+        (*g_selection_callbacks)[wid] = cb;
+    } else {
+        g_selection_callbacks->remove(wid);
+    }
+}
+
+void quartz_combobox_set_text_callback(int32_t wid, QuartzCallback cb) {
+    if (cb) {
+        (*g_text_callbacks)[wid] = cb;
+    } else {
+        g_text_callbacks->remove(wid);
     }
 }
 

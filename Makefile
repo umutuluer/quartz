@@ -96,6 +96,7 @@ OBJ_all = $(OBJ_mac) $(OBJ_gtk) $(OBJ_qt) $(OBJ_win)
 OBJ  = $(OBJ_$(BACKEND))
 BIN  = bin/hello_world
 BIN_LB = bin/listbox_example
+BIN_COMBO = bin/combobox_example
 BIN_CB = bin/checkbox_example
 BIN_RB = bin/radiobutton_example
 
@@ -137,6 +138,7 @@ examples: $(OBJ)  ## Build all example applications
 	crystal build $(CRYSTAL_FLAGS) examples/listbox_example.cr -o $(BIN_LB) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/checkbox_example.cr -o $(BIN_CB) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/radiobutton_example.cr -o $(BIN_RB) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/combobox_example.cr -o $(BIN_COMBO) --link-flags="$(LDFLAGS)"
 
 spec: $(OBJ)  ## Run the crystal spec test suite
 	crystal spec $(CRYSTAL_FLAGS) --link-flags="$(LDFLAGS)"
