@@ -238,6 +238,33 @@ Horizontal: çocuklar yatay; her biri belirtilen width kadar, `parent_height - 2
 
 > Radio buttons in the same window are mutually exclusive — selecting one automatically deselects others. Radio buttons in different windows are independent.
 
+### MenuBar / MenuItem / MenuSeparator / ContextMenu
+
+| Class | Method |
+|---|---|
+| `MenuBar.new` | Create top-level menubar |
+| `MenuBar#add_item(item)` / `add_item(text, &block)` | Add menu item |
+| `MenuBar#add_separator` | Add visual separator |
+| `MenuBar#items` | Returns list of added items |
+| `Window#menu_bar=` | Attach menubar to window |
+| `MenuItem.new(text)` | Create menu item with label |
+| `MenuItem#on_click(&block)` | Register click callback |
+| `MenuSeparator.new` | Create separator |
+| `ContextMenu.new` | Create right-click menu |
+| `Control#context_menu=` | Attach context menu to widget |
+
+> **MVP limitations:**
+> - Submenu (nested menus) not supported — flat menubar only
+> - Shortcuts, checked items — out of MVP scope
+> - macOS menubar is app-global (last assigned wins); per-window future work
+> - Qt menubar requires QMainWindow promotion (separate backend task)
+
+> **⚠️ Submenu support is OUT of the MVP — flat menubar only.** A menubar currently holds a single level of items; nested/submenus require an extra C API (`quartz_menu_item_set_submenu` or similar) that is deferred to a later wave. `MenuBar` instances are designed to be reused as submenu containers once that lands.
+
+> **macOS limitation:** the menubar is **app-global** (`[NSApp setMainMenu:]`). With multiple windows the last `window.menu_bar=` wins. This matches the documented Wave-1b risk in `MENU_PLAN.md`.
+
+> **Qt limitation:** Qt menubar ataması, QMainWindow terfisi ayrı bir dalgada eklenecek. Context menu (sağ tık) Qt'de çalışır.
+
 > All controls inherit from `Control`, which provides the low-level `handle` and `parent` properties.
 
 ---
@@ -325,6 +352,15 @@ crystal build examples/radiobutton_example.cr -o bin/radiobutton_example
 
 Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example.cr)
 
+Run the Menu demo:
+
+```bash
+crystal build examples/menu_example.cr -o bin/menu_example
+./bin/menu_example
+```
+
+Example source: [`examples/menu_example.cr`](examples/menu_example.cr)
+
 ---
 
 ## 🏗️ Architecture
@@ -335,6 +371,8 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 │  Application · Window · Button · Label    │
 │       TextBox · ListBox · ComboBox          │
 │  CheckBox · FileDialog · RadioButton ·     │
+│  MenuBar · MenuItem · MenuSeparator ·      │
+│            ContextMenu                       │
 │            StackLayout                       │
 │                  │                        │
 │            lib_quartz.cr                  │
@@ -365,7 +403,7 @@ Example source: [`examples/radiobutton_example.cr`](examples/radiobutton_example
 - [x] File dialogs
 - [x] Layout managers — Stack MVP
 - [ ] Layout managers (Flow, Grid)
-- [ ] Menu bar & context menus
+- [x] Menu bar & context menus (C layer: AppKit/GTK/Win32/Qt items + context menus; Qt menubar attach deferred — QMainWindow promotion. Submenus out of MVP.)
 - [ ] Comprehensive test suite
 
 ---

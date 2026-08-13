@@ -151,6 +151,133 @@ static void set_text_callback(int32_t widget_id, QuartzCallback callback) {
     }
 }
 
+// ── Menu registries ────────────────────────────────────────────────────
+// Menu callbacks, menu handles, menu items, and context-menu bindings use
+// the same widget_id → entry linked-list pattern as the widget registries
+// above.
+
+// Menu callback registry: widget_id → QuartzCallback (for MenuItem activation)
+static CallbackEntry *g_menu_callback_head = NULL;
+
+static CallbackEntry* find_menu_callback(int32_t widget_id) {
+    CallbackEntry *e = g_menu_callback_head;
+    while (e) {
+        if (e->widget_id == widget_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+static void set_menu_callback(int32_t widget_id, QuartzCallback callback) {
+    CallbackEntry *e = find_menu_callback(widget_id);
+    if (e) {
+        e->callback = callback;
+    } else if (callback) {
+        e = (CallbackEntry*)malloc(sizeof(CallbackEntry));
+        e->widget_id = widget_id;
+        e->callback  = callback;
+        e->next      = g_menu_callback_head;
+        g_menu_callback_head = e;
+    }
+}
+
+// Menu registry: widget_id → HMENU (menubar and popup roots)
+typedef struct MenuEntry {
+    int32_t widget_id;
+    HMENU   hmenu;
+    struct MenuEntry *next;
+} MenuEntry;
+
+static MenuEntry *g_menu_map = NULL;
+
+static void register_menu(int32_t widget_id, HMENU hmenu) {
+    MenuEntry *e = (MenuEntry*)malloc(sizeof(MenuEntry));
+    e->widget_id = widget_id;
+    e->hmenu     = hmenu;
+    e->next      = g_menu_map;
+    g_menu_map   = e;
+}
+
+static HMENU find_menu(int32_t widget_id) {
+    MenuEntry *e = g_menu_map;
+    while (e) {
+        if (e->widget_id == widget_id) return e->hmenu;
+        e = e->next;
+    }
+    return NULL;
+}
+
+// Menu item registry: widget_id ↔ Win32 menu item ID.
+//
+// Win32 menu items are addressed by an item ID (the LOWORD of WM_COMMAND),
+// not by a string. Each MenuItem therefore gets a unique item ID from a
+// dedicated counter that starts at 100 so it can never collide with control
+// IDs (widget_ids come from g_next_id). The caption string is stored here so
+// quartz_menu_add_item can hand it to AppendMenuA.
+static LONG g_next_menu_item_id = 100;
+
+typedef struct MenuItemEntry {
+    int32_t widget_id;
+    UINT    item_id;
+    char*   caption;   // owned by this entry; NULL for separators
+    struct MenuItemEntry *next;
+} MenuItemEntry;
+
+static MenuItemEntry *g_menu_item_map = NULL;
+
+static MenuItemEntry* find_menu_item(int32_t widget_id) {
+    MenuItemEntry *e = g_menu_item_map;
+    while (e) {
+        if (e->widget_id == widget_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+static MenuItemEntry* find_menu_item_by_id(UINT item_id) {
+    MenuItemEntry *e = g_menu_item_map;
+    while (e) {
+        if (e->item_id == item_id) return e;
+        e = e->next;
+    }
+    return NULL;
+}
+
+// Context-menu bindings: widget_id → menu_id
+typedef struct ContextMenuEntry {
+    int32_t widget_id;
+    int32_t menu_id;
+    struct ContextMenuEntry *next;
+} ContextMenuEntry;
+
+static ContextMenuEntry *g_context_menu_head = NULL;
+
+static void register_context_menu(int32_t widget_id, int32_t menu_id) {
+    // Replace an existing binding for the same widget, else prepend.
+    ContextMenuEntry *e = g_context_menu_head;
+    while (e) {
+        if (e->widget_id == widget_id) {
+            e->menu_id = menu_id;
+            return;
+        }
+        e = e->next;
+    }
+    e = (ContextMenuEntry*)malloc(sizeof(ContextMenuEntry));
+    e->widget_id = widget_id;
+    e->menu_id   = menu_id;
+    e->next      = g_context_menu_head;
+    g_context_menu_head = e;
+}
+
+static int32_t lookup_context_menu(int32_t widget_id) {
+    ContextMenuEntry *e = g_context_menu_head;
+    while (e) {
+        if (e->widget_id == widget_id) return e->menu_id;
+        e = e->next;
+    }
+    return -1;
+}
+
 // Widget ID counter (thread-safe via InterlockedIncrement)
 static LONG g_next_id = 1;
 
@@ -274,6 +401,26 @@ static LRESULT CALLBACK quartz_wnd_proc(HWND hwnd, UINT msg,
     switch (msg) {
 
     case WM_COMMAND: {
+        // Menu / accelerator commands first. For these HIWORD(wParam) is 0
+        // (menu) or 1 (accelerator) and LOWORD(wParam) is the menu item ID.
+        // Route them through the menu item map before the control path so a
+        // menu item ID can never be mistaken for a control ID.
+        WORD notify = HIWORD(wParam);
+        if (notify == 0 || notify == 1) {
+            UINT item_id = LOWORD(wParam);
+            MenuItemEntry *me = find_menu_item_by_id(item_id);
+            if (me) {
+                // find_menu_callback follows the same registry pattern as the
+                // widget callbacks: it returns the linked-list entry, so read
+                // the callback out of it.
+                CallbackEntry *ce = find_menu_callback(me->widget_id);
+                if (ce && ce->callback) {
+                    ce->callback(me->widget_id);
+                }
+                return 0;
+            }
+        }
+
         WORD notification = HIWORD(wParam);
         int32_t widget_id = (int32_t)LOWORD(wParam);
 
@@ -325,6 +472,38 @@ static LRESULT CALLBACK quartz_wnd_proc(HWND hwnd, UINT msg,
             if (e && e->callback) {
                 e->callback(widget_id);
             }
+        }
+        return 0;
+    }
+
+    case WM_CONTEXTMENU: {
+        // Right-click (or Shift+F10 / context-menu key) on a child widget:
+        // resolve the widget_id, show its bound context menu, and re-dispatch
+        // the chosen item through WM_COMMAND so menu callbacks stay in one
+        // place. wParam is NULL for keyboard invocation, so fall back to the
+        // top-level window in that case.
+        HWND child_hwnd = (HWND)wParam;
+        if (child_hwnd == NULL) child_hwnd = hwnd;
+
+        int32_t widget_id = (int32_t)(uintptr_t)GetPropA(child_hwnd, PROP_WIDGET_ID);
+        if (widget_id == 0) {
+            widget_id = (int32_t)GetWindowLongPtrA(child_hwnd, GWLP_ID);
+        }
+
+        int32_t menu_id = lookup_context_menu(widget_id);
+        HMENU hmenu = (menu_id >= 0) ? find_menu(menu_id) : NULL;
+        if (!hmenu) return 0;
+
+        POINT pt;
+        GetCursorPos(&pt);
+        int cmd = (int)TrackPopupMenu(hmenu,
+                                      TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                                      pt.x, pt.y, 0, hwnd, NULL);
+        if (cmd > 0) {
+            // Re-dispatch via our own wnd_proc (hwnd) — sending to a child
+            // control would deliver the message to the control's class proc
+            // instead of the menu routing in quartz_wnd_proc.
+            SendMessageA(hwnd, WM_COMMAND, MAKEWPARAM(cmd, 0), 0);
         }
         return 0;
     }
@@ -1042,4 +1221,96 @@ const char* quartz_save_file_dialog(const char* title, const char* filter,
 
     snprintf(buffer, sizeof(buffer), "%s", szFile);
     return buffer;
+}
+
+// ── Menus ──────────────────────────────────────────────────────────────
+// Wave 1b — full Win32 implementation. Win32 already links user32.dll
+// (CreateMenu/CreatePopupMenu/SetMenu/AppendMenuA/TrackPopupMenu), so no
+// additional link flags are needed.
+
+int32_t quartz_menubar_create(void) {
+    HMENU hmenu = CreateMenu();
+    if (!hmenu) return 0;
+
+    int32_t wid = InterlockedIncrement(&g_next_id);
+    register_menu(wid, hmenu);
+
+    return wid;
+}
+
+int32_t quartz_contextmenu_create(void) {
+    HMENU hmenu = CreatePopupMenu();
+    if (!hmenu) return 0;
+
+    int32_t wid = InterlockedIncrement(&g_next_id);
+    register_menu(wid, hmenu);
+
+    return wid;
+}
+
+int32_t quartz_menuitem_create(int32_t parent_id, const char* label) {
+    (void)parent_id;  // MVP: chained add_item; auto-append is not done here
+
+    int32_t wid  = InterlockedIncrement(&g_next_id);
+    UINT item_id = (UINT)InterlockedIncrement(&g_next_menu_item_id);
+
+    // The caption is owned by this entry so quartz_menu_add_item can pass it
+    // to AppendMenuA together with the item ID.
+    MenuItemEntry *e = (MenuItemEntry*)malloc(sizeof(MenuItemEntry));
+    e->widget_id = wid;
+    e->item_id   = item_id;
+    e->caption   = label ? _strdup(label) : _strdup("");
+    e->next      = g_menu_item_map;
+    g_menu_item_map = e;
+
+    return wid;
+}
+
+int32_t quartz_menuseparator_create(void) {
+    int32_t wid  = InterlockedIncrement(&g_next_id);
+    UINT item_id = (UINT)InterlockedIncrement(&g_next_menu_item_id);
+
+    MenuItemEntry *e = (MenuItemEntry*)malloc(sizeof(MenuItemEntry));
+    e->widget_id = wid;
+    e->item_id   = item_id;
+    e->caption   = NULL;  // separator
+    e->next      = g_menu_item_map;
+    g_menu_item_map = e;
+
+    return wid;
+}
+
+void quartz_menu_add_item(int32_t menu_id, int32_t item_id) {
+    HMENU hmenu = find_menu(menu_id);
+    if (!hmenu) return;
+
+    MenuItemEntry *e = find_menu_item(item_id);
+    if (!e) return;
+
+    if (e->caption == NULL) {
+        AppendMenuA(hmenu, MF_SEPARATOR, e->item_id, NULL);
+    } else {
+        AppendMenuA(hmenu, MF_STRING, e->item_id, e->caption);
+    }
+}
+
+void quartz_menu_item_set_callback(int32_t item_id, QuartzCallback callback) {
+    if (callback) {
+        set_menu_callback(item_id, callback);
+    }
+}
+
+void quartz_window_set_menubar(int32_t window_id, int32_t menubar_id) {
+    HWND hwnd = find_hwnd(window_id);
+    HMENU hmenu = find_menu(menubar_id);
+    if (!hwnd || !hmenu) return;
+
+    SetMenu(hwnd, hmenu);
+    DrawMenuBar(hwnd);  // required — without it the menubar is never drawn
+}
+
+void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
+    // Only the binding is recorded here; the actual popup dispatch happens in
+    // the WM_CONTEXTMENU handler of quartz_wnd_proc.
+    register_context_menu(widget_id, menu_id);
 }

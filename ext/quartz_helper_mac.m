@@ -15,6 +15,13 @@ static NSMutableDictionary<NSNumber*, id> *widgetMap = nil;
 static NSMutableDictionary<NSNumber*, NSValue*> *callbackMap = nil;
 
 // ---------------------------------------------------------------------------
+// Menu callback map: item widget_id -> QuartzCallback (stored as NSValue
+// pointer). Separate from callbackMap — menus use a single event channel
+// (click), so NO offset key hack is needed here.
+// ---------------------------------------------------------------------------
+static NSMutableDictionary<NSNumber*, NSValue*> *menuCallbackMap = nil;
+
+// ---------------------------------------------------------------------------
 // Thread-safe widget ID counter
 // ---------------------------------------------------------------------------
 static atomic_int nextWidgetId = 1;
@@ -210,6 +217,35 @@ static int32_t next_widget_id(void) {
 @end
 
 // ---------------------------------------------------------------------------
+// Target object for NSMenuItem click actions — bridges to our dedicated
+// menuCallbackMap (single click channel, no offset-key hack).
+// The target is retained on the NSMenuItem via objc_setAssociatedObject
+// (NSMenuItem only holds its target weakly), exactly like ButtonTarget.
+// ---------------------------------------------------------------------------
+@interface MenuItemTarget : NSObject {
+    int32_t widgetId;
+}
+- (id)initWithWidgetId:(int32_t)wid;
+- (void)menuItemClicked:(NSMenuItem*)sender;
+@end
+
+@implementation MenuItemTarget
+- (id)initWithWidgetId:(int32_t)wid {
+    self = [super init];
+    if (self) widgetId = wid;
+    return self;
+}
+- (void)menuItemClicked:(NSMenuItem*)sender {
+    (void)sender;
+    NSValue *val = menuCallbackMap[@(widgetId)];
+    if (!val) return;
+    QuartzCallback cb;
+    [val getValue:&cb];
+    if (cb) cb(widgetId);
+}
+@end
+
+// ---------------------------------------------------------------------------
 // NSApplication delegate
 // ---------------------------------------------------------------------------
 @interface AppDelegate : NSObject <NSApplicationDelegate>
@@ -230,6 +266,7 @@ void quartz_init(void) {
 
     widgetMap   = [NSMutableDictionary dictionary];
     callbackMap = [NSMutableDictionary dictionary];
+    menuCallbackMap = [NSMutableDictionary dictionary];
 
     NSApplication *app = [NSApplication sharedApplication];
     AppDelegate *delegate = [[AppDelegate alloc] init];
@@ -1010,4 +1047,118 @@ void quartz_toggle_set_change_callback(int32_t widget_id, QuartzCallback callbac
         objc_setAssociatedObject(button, (const void *)(uintptr_t)(widget_id + 300000), target,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Menus
+//
+// Design notes:
+// - Items are created standalone via quartz_menuitem_create and then added to
+//   a menu with quartz_menu_add_item (chained `Menu#add_item(item)` model).
+//   quartz_menuitem_create does NOT auto-append to its parent menu.
+// - Callbacks go through the dedicated menuCallbackMap (single click channel).
+//   The offset-key hack used elsewhere (+100000/+200000/...) is NOT used here.
+// - macOS menubars are app-global: quartz_window_set_menubar calls
+//   [NSApp setMainMenu:] plus a (mostly cosmetic) per-window [window setMenu:].
+//   With multiple windows, the last assignment wins.
+// - Context menus are bound via NSView.menu; AppKit pops the menu up
+//   automatically on right-/control-click, so no rightMouseDown: override is
+//   needed.
+// - SUBMENUS ARE OUT OF MVP (flat menubar only). See README note.
+// ---------------------------------------------------------------------------
+int32_t quartz_menubar_create(void) {
+    NSMenu *menu = [NSMenu new];
+    [menu setAutoenablesItems:NO];
+    int32_t wid = next_widget_id();
+    widgetMap[@(wid)] = menu;
+    return wid;
+}
+
+int32_t quartz_contextmenu_create(void) {
+    NSMenu *menu = [NSMenu new];
+    [menu setAutoenablesItems:NO];
+    int32_t wid = next_widget_id();
+    widgetMap[@(wid)] = menu;
+    return wid;
+}
+
+int32_t quartz_menuitem_create(int32_t parent_id, const char* label) {
+    NSString *title = label ? [NSString stringWithUTF8String:label] : @"";
+    int32_t wid = next_widget_id();
+
+    MenuItemTarget *target = [[MenuItemTarget alloc] initWithWidgetId:wid];
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
+                                                  action:@selector(menuItemClicked:)
+                                           keyEquivalent:@""];
+    [item setTarget:target];
+
+    // Retain the target on the item (NSMenuItem's target reference is weak).
+    // Same pattern as ButtonTarget / TextBoxDelegate.
+    objc_setAssociatedObject(item, "menuItemTarget", target,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    // Register the NSMenuItem itself as the widget (so add_item can find it later)
+    widgetMap[@(wid)] = item;
+
+    // No auto-append here: quartz_menu_add_item is called separately
+    // (chained `Menu#add_item(item)` model). parent_id is reserved for
+    // future submenu association — not needed in MVP.
+    (void)parent_id;
+
+    return wid;
+}
+
+int32_t quartz_menuseparator_create(void) {
+    NSMenuItem *sep = [NSMenuItem separatorItem];
+    int32_t wid = next_widget_id();
+    widgetMap[@(wid)] = sep;
+    return wid;
+}
+
+void quartz_menu_add_item(int32_t menu_id, int32_t item_id) {
+    id menuObj = widgetMap[@(menu_id)];
+    id itemObj = widgetMap[@(item_id)];
+    if (![menuObj isKindOfClass:[NSMenu class]] || !itemObj) return;
+
+    NSMenu *menu = (NSMenu*)menuObj;
+
+    if ([itemObj isKindOfClass:[NSMenuItem class]]) {
+        NSMenuItem *item = (NSMenuItem*)itemObj;
+        [menu addItem:item];
+    } else if ([itemObj isKindOfClass:[NSMenu class]]) {
+        // Submenu support is intentionally OUT of MVP (flat menubar only).
+        // Enabling it would require an extra C API such as
+        // quartz_menu_item_set_submenu(item_id, submenu_id) or a
+        // wrapper-item approach; neither is needed for the MVP, so this
+        // branch is a deliberate no-op. See README note.
+        (void)itemObj;
+    }
+}
+
+void quartz_menu_item_set_callback(int32_t item_id, QuartzCallback callback) {
+    if (!menuCallbackMap) menuCallbackMap = [NSMutableDictionary new];
+    if (callback) {
+        NSValue *val = [NSValue valueWithPointer:(void*)callback];
+        menuCallbackMap[@(item_id)] = val;
+    } else {
+        [menuCallbackMap removeObjectForKey:@(item_id)];
+    }
+}
+
+void quartz_window_set_menubar(int32_t window_id, int32_t menubar_id) {
+    NSWindow *window = (NSWindow*)widgetMap[@(window_id)];
+    NSMenu *menu = (NSMenu*)widgetMap[@(menubar_id)];
+    if (![window isKindOfClass:[NSWindow class]] || ![menu isKindOfClass:[NSMenu class]]) return;
+
+    [NSApp setMainMenu:menu];  // global menubar (macOS convention)
+    [window setMenu:menu];     // per-window association (mostly cosmetic on mac)
+}
+
+void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
+    id viewObj = widgetMap[@(widget_id)];
+    NSMenu *menu = (NSMenu*)widgetMap[@(menu_id)];
+    if (![viewObj isKindOfClass:[NSView class]] || ![menu isKindOfClass:[NSMenu class]]) return;
+
+    NSView *view = (NSView*)viewObj;
+    [view setMenu:menu];
 }

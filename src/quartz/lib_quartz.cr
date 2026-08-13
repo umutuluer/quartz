@@ -66,6 +66,18 @@ lib LibQuartz
                                x : Int32, y : Int32,
                                width : Int32, height : Int32) : Void
 
+  # --- Menus ---
+  # MenuBar instances are reused for submenus, so a submenu's own id is a
+  # MenuBar id (enables chained `add_submenu(label) -> MenuBar`).
+  fun quartz_menubar_create : Int32
+  fun quartz_contextmenu_create : Int32
+  fun quartz_menuitem_create(parent_id : Int32, label : LibC::Char*) : Int32
+  fun quartz_menuseparator_create : Int32
+  fun quartz_menu_add_item(menu_id : Int32, item_id : Int32) : Void
+  fun quartz_menu_item_set_callback(item_id : Int32, callback : QuartzCallback) : Void
+  fun quartz_window_set_menubar(window_id : Int32, menubar_id : Int32) : Void
+  fun quartz_widget_set_contextmenu(widget_id : Int32, menu_id : Int32) : Void
+
   # --- Widget properties ---
   fun quartz_widget_set_text(widget_id : Int32, text : LibC::Char*) : Void
   fun quartz_widget_set_callback(widget_id : Int32, callback : QuartzCallback) : Void

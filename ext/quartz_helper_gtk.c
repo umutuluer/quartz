@@ -48,6 +48,18 @@ static GHashTable *toggle_callback_map = NULL;
 // Radio group tracking: parent container → first GSList* radio group
 static GHashTable *radio_group_map = NULL;
 
+// Menu registry — type-separated. GtkMenuBar, GtkMenu and GtkMenuItem are
+// distinct widget types in GTK, so they cannot share a single widget_map.
+static GHashTable *g_menubar_map = NULL;              // widget_id → GtkMenuBar*
+static GHashTable *g_contextmenu_map = NULL;          // widget_id → GtkMenu*
+static GHashTable *g_menuitem_map = NULL;             // widget_id → GtkMenuItem*
+
+// Menu callback registry — menu items dispatch through their own table.
+static GHashTable *g_menu_callback_map = NULL;        // widget_id → QuartzCallback
+
+// Context-menu targets — widget_id → widget that owns a context menu.
+static GHashTable *g_contextmenu_target_map = NULL;   // widget_id → GtkWidget*
+
 // ── Widget ID counter ──────────────────────────────────────────────────
 
 static atomic_int next_id = 1;
@@ -69,6 +81,11 @@ static void ensure_init(void) {
         g_text_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         toggle_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
         radio_group_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        g_menubar_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        g_contextmenu_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        g_menuitem_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        g_menu_callback_map = g_hash_table_new(g_direct_hash, g_direct_equal);
+        g_contextmenu_target_map = g_hash_table_new(g_direct_hash, g_direct_equal);
     }
 }
 
@@ -1034,4 +1051,137 @@ const char* quartz_save_file_dialog(const char* title, const char* filter_str,
     gtk_widget_destroy(dialog);
 
     return result;
+}
+
+// ── Menus ──────────────────────────────────────────────────────────────
+// Wave 1c — full GTK 3 implementation. Menu ids and item ids are tracked in
+// type-separated hash tables (GtkMenuBar vs GtkMenu vs GtkMenuItem).
+//
+// Submenus are out of scope for the MVP: the menubar is a flat list of
+// items. Item callbacks dispatch through g_menu_callback_map — there is no
+// offset-key hack here.
+
+// GTK signal handler — menu item activated → g_menu_callback_map
+static void on_menu_item_activated(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    int32_t wid = GPOINTER_TO_INT(user_data);
+    QuartzCallback cb = (QuartzCallback)g_hash_table_lookup(g_menu_callback_map,
+                                                            GINT_TO_POINTER(wid));
+    if (cb) {
+        cb(wid);
+    }
+}
+
+// GTK signal handler — right-click on a widget → pop up its context menu
+static gboolean on_widget_button_press(GtkWidget *widget, GdkEventButton *event,
+                                       gpointer user_data) {
+    (void)widget;
+    if (event->button != 3) return FALSE;  // not a right click
+
+    GtkWidget *menu = GTK_WIDGET(user_data);
+#if GTK_CHECK_VERSION(3, 22, 0)
+    gtk_menu_popup_at_pointer(GTK_MENU(menu), (const GdkEvent *)event);
+#else
+    // gtk_menu_popup is deprecated in 3.22+, but this is the pre-3.22 path
+    gtk_menu_popup(GTK_MENU(menu), NULL, NULL, NULL, NULL,
+                   event->button, event->time);
+#endif
+    return TRUE;
+}
+
+int32_t quartz_menubar_create(void) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    GtkWidget *menubar = gtk_menu_bar_new();
+    g_hash_table_insert(g_menubar_map, GINT_TO_POINTER(wid), menubar);
+
+    return wid;
+}
+
+int32_t quartz_contextmenu_create(void) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    GtkWidget *menu = gtk_menu_new();
+    g_hash_table_insert(g_contextmenu_map, GINT_TO_POINTER(wid), menu);
+
+    return wid;
+}
+
+int32_t quartz_menuitem_create(int32_t parent_id, const char *label) {
+    (void)parent_id;  // MVP: flat menubar, no submenu chaining here
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    GtkWidget *item = gtk_menu_item_new_with_label(label ? label : "");
+    g_hash_table_insert(g_menuitem_map, GINT_TO_POINTER(wid), item);
+
+    g_signal_connect(item, "activate",
+                     G_CALLBACK(on_menu_item_activated),
+                     GINT_TO_POINTER(wid));
+
+    return wid;
+}
+
+int32_t quartz_menuseparator_create(void) {
+    ensure_init();
+    int32_t wid = next_widget_id();
+
+    GtkWidget *sep = gtk_separator_menu_item_new();
+    g_hash_table_insert(g_menuitem_map, GINT_TO_POINTER(wid), sep);
+
+    return wid;
+}
+
+void quartz_menu_add_item(int32_t menu_id, int32_t item_id) {
+    // menu_id may be a GtkMenuBar or a GtkMenu
+    GtkWidget *menu = (GtkWidget *)g_hash_table_lookup(g_menubar_map,
+                                                        GINT_TO_POINTER(menu_id));
+    if (!menu) {
+        menu = (GtkWidget *)g_hash_table_lookup(g_contextmenu_map,
+                                                 GINT_TO_POINTER(menu_id));
+    }
+    GtkWidget *item = (GtkWidget *)g_hash_table_lookup(g_menuitem_map,
+                                                        GINT_TO_POINTER(item_id));
+    if (!menu || !item) return;
+
+    if (GTK_IS_MENU_BAR(menu)) {
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    } else if (GTK_IS_MENU(menu)) {
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    }
+}
+
+void quartz_menu_item_set_callback(int32_t item_id, QuartzCallback callback) {
+    if (callback) {
+        g_hash_table_insert(g_menu_callback_map, GINT_TO_POINTER(item_id),
+                            (gpointer)callback);
+    } else {
+        g_hash_table_remove(g_menu_callback_map, GINT_TO_POINTER(item_id));
+    }
+}
+
+void quartz_window_set_menubar(int32_t window_id, int32_t menubar_id) {
+    GtkWidget *window = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(window_id));
+    GtkWidget *menubar = (GtkWidget *)g_hash_table_lookup(g_menubar_map,
+                                                           GINT_TO_POINTER(menubar_id));
+    if (!GTK_IS_WINDOW(window) || !GTK_IS_MENU_BAR(menubar)) return;
+
+    gtk_window_set_menubar(GTK_WINDOW(window), menubar);
+    gtk_widget_show_all(menubar);
+}
+
+void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
+    GtkWidget *widget = (GtkWidget *)g_hash_table_lookup(widget_map,
+                                                          GINT_TO_POINTER(widget_id));
+    GtkWidget *menu = (GtkWidget *)g_hash_table_lookup(g_contextmenu_map,
+                                                        GINT_TO_POINTER(menu_id));
+    if (!widget || !GTK_IS_MENU(menu)) return;
+
+    // Native context menu: wire up button-press-event on the target widget
+    g_signal_connect(widget, "button-press-event",
+                     G_CALLBACK(on_widget_button_press), menu);
+    g_hash_table_insert(g_contextmenu_target_map, GINT_TO_POINTER(widget_id), widget);
 }

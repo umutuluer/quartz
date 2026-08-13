@@ -25,6 +25,9 @@
 #include <QListWidget>
 #include <QComboBox>
 #include <QAbstractButton>
+#include <QAction>
+#include <QMenu>
+#include <QMenuBar>
 #include <QMap>
 #include <QAtomicInt>
 
@@ -56,6 +59,18 @@ static QMap<int32_t, QuartzCallback> *g_text_callbacks = nullptr;
 // Toggle change callback registry (for CheckBox / RadioButton)
 static QMap<int32_t, QuartzCallback> *g_toggle_callbacks = nullptr;
 
+// Menu bar registry: menubar_id → QMenuBar*
+static QMap<int32_t, QMenuBar*> *g_menubar_map = nullptr;
+
+// Context menu registry: menu_id → QMenu*
+static QMap<int32_t, QMenu*> *g_contextmenu_map = nullptr;
+
+// Menu item registry: item_id → QAction* (items AND separators)
+static QMap<int32_t, QAction*> *g_menuitem_map = nullptr;
+
+// Menu item callback registry: item_id → QuartzCallback
+static QMap<int32_t, QuartzCallback> *g_menu_callbacks = nullptr;
+
 // Thread-safe ID counter
 static QAtomicInt g_next_id(1);
 
@@ -67,6 +82,10 @@ void ensure_init() {
         g_selection_callbacks = new QMap<int32_t, QuartzCallback>();
         g_text_callbacks = new QMap<int32_t, QuartzCallback>();
         g_toggle_callbacks = new QMap<int32_t, QuartzCallback>();
+        g_menubar_map = new QMap<int32_t, QMenuBar*>();
+        g_contextmenu_map = new QMap<int32_t, QMenu*>();
+        g_menuitem_map = new QMap<int32_t, QAction*>();
+        g_menu_callbacks = new QMap<int32_t, QuartzCallback>();
     }
 }
 
@@ -735,6 +754,117 @@ const char* quartz_save_file_dialog(const char* title, const char* filter,
     (void)file_name;  // Qt, dir parametresinden path'i alır; dosya adı için ek API yok
     (void)default_ext;  // Qt filter pattern'den gelir
     return buffer.constData();
+}
+
+// ── Menus ──────────────────────────────────────────────────────────────
+//
+// MVP scope:
+//   * Flat menu bars and context menus work (create + populate + callbacks).
+//   * Submenus are out of MVP scope — see note in quartz_menu_add_item.
+//   * Attaching a menu bar to a window is deferred: Qt only allows
+//     QMainWindow::setMenuBar, and quartz_window_create still produces a
+//     plain QWidget. The QMainWindow promotion is a separate wave (see
+//     quartz_window_set_menubar below).
+//   * Context menus (right-click) work today via CustomContextMenu policy.
+
+int32_t quartz_menubar_create() {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QMenuBar *menubar = new QMenuBar();
+    (*g_menubar_map)[wid] = menubar;
+    return wid;
+}
+
+int32_t quartz_contextmenu_create() {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    QMenu *menu = new QMenu();
+    (*g_contextmenu_map)[wid] = menu;
+    return wid;
+}
+
+int32_t quartz_menuitem_create(int32_t parent_id, const char *label) {
+    ensure_init();
+    (void)parent_id;  // submenus are out of MVP scope; items are flat
+
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+    QString qlabel = label ? QString::fromUtf8(label) : QString();
+
+    QAction *action = new QAction(qlabel, nullptr);
+    // Callback dispatch uses the item's own widget_id (no offset-key hack).
+    QObject::connect(action, &QAction::triggered, [wid]() {
+        QuartzCallback cb = g_menu_callbacks->value(wid, nullptr);
+        if (cb) cb(wid);
+    });
+
+    (*g_menuitem_map)[wid] = action;
+    return wid;
+}
+
+int32_t quartz_menuseparator_create() {
+    ensure_init();
+    int32_t wid = g_next_id.fetchAndAddOrdered(1);
+
+    // A separator is a QAction flagged as a separator; Qt renders it as a
+    // dividing line when it is added via addAction().
+    QAction *sep = new QAction(nullptr);
+    sep->setSeparator(true);
+
+    (*g_menuitem_map)[wid] = sep;
+    return wid;
+}
+
+void quartz_menu_add_item(int32_t menu_id, int32_t item_id) {
+    QMenuBar *menubar = g_menubar_map->value(menu_id, nullptr);
+    QMenu *menu       = g_contextmenu_map->value(menu_id, nullptr);
+    QAction *action   = g_menuitem_map->value(item_id, nullptr);
+    if (!action) return;
+
+    if (menubar) {
+        menubar->addAction(action);
+    } else if (menu) {
+        menu->addAction(action);
+    }
+    // Submenu note (MVP): a QMenu added via addAction() becomes a menu item,
+    // NOT a submenu. Submenus are created with QMenu::addMenu() and are out
+    // of MVP scope.
+}
+
+void quartz_menu_item_set_callback(int32_t item_id, QuartzCallback callback) {
+    if (callback) {
+        (*g_menu_callbacks)[item_id] = callback;
+    } else {
+        g_menu_callbacks->remove(item_id);
+    }
+}
+
+void quartz_window_set_menubar(int32_t window_id, int32_t menubar_id) {
+    // DEFERRED (MVP): In Qt, a menu bar can only be attached to a
+    // QMainWindow via QMainWindow::setMenuBar. quartz_window_create currently
+    // produces a plain QWidget, and promoting it to QMainWindow (moving all
+    // existing children into a central widget) is a regression risk for every
+    // existing example. Until that promotion lands in a separate wave, this
+    // is a documented no-op: the menubar itself is still created and
+    // populated, and right-click context menus work today.
+    (void)window_id;
+    (void)menubar_id;
+}
+
+void quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id) {
+    QWidget *widget = g_widgets->value(widget_id, nullptr);
+    QMenu *menu     = g_contextmenu_map->value(menu_id, nullptr);
+    if (!widget || !menu) return;
+
+    widget->setContextMenuPolicy(Qt::CustomContextMenu);
+    // Drop any previous context-menu connection to avoid duplicates
+    QObject::disconnect(widget, &QWidget::customContextMenuRequested,
+                        nullptr, nullptr);
+    QObject::connect(widget, &QWidget::customContextMenuRequested,
+                     [widget, menu](const QPoint &pos) {
+        menu->exec(widget->mapToGlobal(pos));
+    });
 }
 
 } // extern "C"

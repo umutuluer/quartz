@@ -47,6 +47,18 @@ void quartz_widget_set_bounds(int32_t widget_id,
                               int32_t x, int32_t y,
                               int32_t width, int32_t height);
 
+// --- Menus ---
+// MenuBar instances are reused for submenus, so a submenu's own id is a
+// MenuBar id (enables chained `add_submenu(label) -> MenuBar`).
+int32_t quartz_menubar_create(void);
+int32_t quartz_contextmenu_create(void);
+int32_t quartz_menuitem_create(int32_t parent_id, const char* label);
+int32_t quartz_menuseparator_create(void);
+void    quartz_menu_add_item(int32_t menu_id, int32_t item_id);
+void    quartz_menu_item_set_callback(int32_t item_id, QuartzCallback callback);
+void    quartz_window_set_menubar(int32_t window_id, int32_t menubar_id);
+void    quartz_widget_set_contextmenu(int32_t widget_id, int32_t menu_id);
+
 // --- Widget properties ---
 void quartz_widget_set_text(int32_t widget_id, const char* text);
 void quartz_widget_set_callback(int32_t widget_id, QuartzCallback callback);

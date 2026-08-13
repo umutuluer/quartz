@@ -102,6 +102,7 @@ BIN_RB = bin/radiobutton_example
 BIN_OFD = bin/openfiledialog_example
 BIN_SFD = bin/savefiledialog_example
 BIN_LAYOUT = bin/layout_example
+BIN_MENU = bin/menu_example
 
 # ═══════════════════════════════════════════════════════════════════════
 # Targets
@@ -145,6 +146,7 @@ examples: $(OBJ)  ## Build all example applications
 	crystal build $(CRYSTAL_FLAGS) examples/openfiledialog_example.cr -o $(BIN_OFD) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/savefiledialog_example.cr -o $(BIN_SFD) --link-flags="$(LDFLAGS)"
 	crystal build $(CRYSTAL_FLAGS) examples/layout_example.cr -o $(BIN_LAYOUT) --link-flags="$(LDFLAGS)"
+	crystal build $(CRYSTAL_FLAGS) examples/menu_example.cr -o $(BIN_MENU) --link-flags="$(LDFLAGS)"
 
 spec: $(OBJ)  ## Run the crystal spec test suite
 	crystal spec $(CRYSTAL_FLAGS) --link-flags="$(LDFLAGS)"

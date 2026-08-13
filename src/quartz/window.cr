@@ -1,4 +1,5 @@
 require "./control"
+require "./menu_bar"
 
 module Quartz
   # A top-level application window.
@@ -71,6 +72,16 @@ module Quartz
       else
         false
       end
+    end
+
+    # Attaches a menu bar to this window. Returns `self` to enable
+    # method chaining.
+    #
+    # On macOS the menubar is app-global — with multiple windows the
+    # last assignment wins.
+    def menu_bar=(bar : MenuBar) : self
+      LibQuartz.quartz_window_set_menubar(@handle, bar.handle)
+      self
     end
   end
 end
